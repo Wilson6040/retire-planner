@@ -586,6 +586,91 @@
         };
       }
 
+      // Per-asset Monte Carlo — uses cagrByYear, falls back to last year for years > 10
+      function monteCarloAssets(plan, simulations = 500) {
+        const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
+        const currentAge = Number(plan.people.stuart.age);
+        const maxAge = Number(plan.people.lifeExpectancy);
+        const years = maxAge - currentAge;
+        const inflation = Number(plan.assumptions.inflation || 5) / 100;
+        const volatility = Number(plan.assumptions.volatility || 10) / 100;
+        const assets = plan.portfolioAssets || [];
+        const baseDrawdown = (Number(plan.expenses.monthlyDrawdown) * 12);
+
+        function assetCagr(asset, yearIdx) {
+          const c = asset.cagrByYear || [];
+          const raw = c[Math.min(yearIdx, c.length - 1)] ?? 7;
+          return Number(raw) / 100;
+        }
+
+        // Simulate each asset independently
+        const assetResults = assets.map((asset, ai) => {
+          const trajectories = Array.from({ length: years }, () => []);
+          for (let s = 0; s < simulations; s++) {
+            let val = Number(asset.value || 0);
+            for (let y = 0; y < years; y++) {
+              const mean = assetCagr(asset, y);
+              const shock = normalRandom(mean, volatility);
+              val = Math.max(0, val * (1 + shock));
+              trajectories[y].push(val);
+            }
+          }
+          return {
+            id: asset.id,
+            name: asset.name,
+            color: PA_COLORS[ai % 10],
+            fan: trajectories.map((arr, y) => {
+              const sorted = [...arr].sort((a, b) => a - b);
+              return {
+                age: currentAge + y + 1,
+                p10: quantile(sorted, 0.1),
+                p25: quantile(sorted, 0.25),
+                p50: quantile(sorted, 0.5),
+                p75: quantile(sorted, 0.75),
+                p90: quantile(sorted, 0.9),
+              };
+            }),
+          };
+        });
+
+        // Combined portfolio simulation
+        const combinedTraj = Array.from({ length: years }, () => []);
+        let success = 0;
+        for (let s = 0; s < simulations; s++) {
+          let assetVals = assets.map(a => Number(a.value || 0));
+          for (let y = 0; y < years; y++) {
+            assetVals = assetVals.map((val, ai) => {
+              const mean = assetCagr(assets[ai], y);
+              return Math.max(0, val * (1 + normalRandom(mean, volatility)));
+            });
+            const total = assetVals.reduce((a, b) => a + b, 0);
+            // Deduct inflation-adjusted drawdown
+            const drawdown = baseDrawdown * Math.pow(1 + inflation, y);
+            const net = Math.max(0, total - drawdown);
+            combinedTraj[y].push(net);
+            if (y === years - 1 && net > 0) success++;
+          }
+        }
+
+        const combinedFan = combinedTraj.map((arr, y) => {
+          const sorted = [...arr].sort((a, b) => a - b);
+          return {
+            age: currentAge + y + 1,
+            p10: quantile(sorted, 0.1),
+            p25: quantile(sorted, 0.25),
+            p50: quantile(sorted, 0.5),
+            p75: quantile(sorted, 0.75),
+            p90: quantile(sorted, 0.9),
+          };
+        });
+
+        return {
+          assetResults,
+          combinedFan,
+          successProbability: (success / simulations) * 100,
+        };
+      }
+
       function taxFromSABands(annualTaxableGBP, gbpZar) {
         const taxableZar = annualTaxableGBP * gbpZar;
         const bands = [
@@ -632,6 +717,7 @@
         const runway = runwayAge(projectionRows, Number(plan.people.lifeExpectancy));
         const yearsToPension = Number(plan.people.stuart.statePensionAge) - Number(plan.people.stuart.age);
         const mcBase = React.useMemo(() => monteCarlo(plan, scenarioSet[0], 1000), [plan, scenarioSet]);
+        const mcAssets = React.useMemo(() => monteCarloAssets(plan, 300), [plan]);
 
         const holdingsValue = React.useMemo(
           () => plan.holdings.map((h) => ({ ...h, currentValue: Number(h.quantity) * Number(h.current), gain: (Number(h.current) - Number(h.avgBuy)) * Number(h.quantity) })),
@@ -926,48 +1012,97 @@
 
               {activeTab === 'Monte Carlo' && (
                 <div className="space-y-4">
+
+                  {/* Controls */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 panel rounded-xl p-4">
                     <label className="space-y-1">
-                      <div className="muted">Expected Return %</div>
-                      <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.expectedReturn} onChange={(e) => updatePlan(['assumptions', 'expectedReturn'], Number(e.target.value))} />
-                    </label>
-                    <label className="space-y-1">
-                      <div className="muted">Inflation %</div>
+                      <div className="muted text-xs">Inflation %</div>
                       <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.inflation} onChange={(e) => updatePlan(['assumptions', 'inflation'], Number(e.target.value))} />
                     </label>
                     <label className="space-y-1">
-                      <div className="muted">Volatility % (Std Dev)</div>
+                      <div className="muted text-xs">Volatility % (Std Dev)</div>
                       <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.volatility} onChange={(e) => updatePlan(['assumptions', 'volatility'], Number(e.target.value))} />
                     </label>
                     <label className="space-y-1">
-                      <div className="muted">Years to Simulate</div>
+                      <div className="muted text-xs">Simulations</div>
                       <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.yearsToSimulate} onChange={(e) => updatePlan(['assumptions', 'yearsToSimulate'], Number(e.target.value))} />
                     </label>
-                  </div>
-
-                  <div className="panel rounded-xl p-5">
-                    <div className="text-base">Probability of Success</div>
-                    <div className={`text-4xl font-bold ${mcBase.successProbability >= 75 ? 'text-positive' : mcBase.successProbability >= 55 ? 'text-amberish' : 'text-negative'}`}>
-                      {mcBase.successProbability.toFixed(1)}%
+                    <div className="space-y-1">
+                      <div className="muted text-xs">Each asset uses its own per-year CAGR from Portfolio tab</div>
+                      <div className="text-xs text-positive">± {plan.assumptions.volatility}% volatility applied</div>
                     </div>
                   </div>
 
-                  <div className="panel rounded-xl p-4 h-[26rem]">
-                    <div className="font-medium mb-3">Monte Carlo Fan Chart (10/25/50/75/90th percentiles)</div>
-                    <ResponsiveContainer width="100%" height="90%">
-                      <AreaChart data={mcBase.fan}>
-                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-                        <XAxis dataKey="age" />
-                        <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                        <Tooltip formatter={(v) => displayMoney(v)} />
-                        <Area dataKey="p90" stroke="#14532d" fill="#14532d" fillOpacity={0.12} dot={false} />
-                        <Area dataKey="p75" stroke="#16a34a" fill="#16a34a" fillOpacity={0.18} dot={false} />
-                        <Area dataKey="p50" stroke="#22c55e" fill="#22c55e" fillOpacity={0.28} dot={false} />
-                        <Area dataKey="p25" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} dot={false} />
-                        <Area dataKey="p10" stroke="#ef4444" fill="#ef4444" fillOpacity={0.12} dot={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                  {/* Success probability */}
+                  <div className="panel rounded-xl p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <div className="muted text-xs mb-1">Combined Portfolio — Probability of Success</div>
+                        <div className={`text-5xl font-bold ${mcAssets.successProbability >= 75 ? 'text-positive' : mcAssets.successProbability >= 55 ? 'text-amberish' : 'text-negative'}`}>
+                          {mcAssets.successProbability.toFixed(1)}%
+                        </div>
+                        <div className="muted text-xs mt-1">Portfolio &gt; £0 at age {plan.people.lifeExpectancy}</div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="muted text-xs mb-2">Asset allocation at risk</div>
+                        <div className="flex flex-wrap gap-2">
+                          {mcAssets.assetResults.map(a => (
+                            <div key={a.id} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border" style={{ borderColor: a.color + '55', color: a.color, background: a.color + '15' }}>
+                              <div className="w-2 h-2 rounded-full" style={{ background: a.color }}></div>
+                              {a.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Per-asset median lines chart */}
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-semibold mb-1">Per-Asset Median Projection (p50)</div>
+                    <div className="muted text-xs mb-3">Each asset simulated independently with its own CAGR + ±{plan.assumptions.volatility}% volatility</div>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={mcAssets.assetResults[0]?.fan.map((_, i) => {
+                          const row = { age: mcAssets.assetResults[0].fan[i].age };
+                          mcAssets.assetResults.forEach(a => { row[a.name] = Math.round(a.fan[i].p50); });
+                          return row;
+                        }) || []}>
+                          <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
+                          <XAxis dataKey="age" tick={{ fontSize: 11 }} />
+                          <YAxis tickFormatter={v => v >= 1000000 ? `£${(v/1000000).toFixed(1)}m` : `£${Math.round(v/1000)}k`} tick={{ fontSize: 11 }} width={72} />
+                          <Tooltip formatter={(v, name) => [displayMoney(v), name]} />
+                          <Legend iconType="circle" iconSize={8} />
+                          {mcAssets.assetResults.map(a => (
+                            <Line key={a.id} type="monotone" dataKey={a.name} stroke={a.color} strokeWidth={2} dot={false} />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Combined portfolio fan chart */}
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-semibold mb-1">Combined Portfolio — Confidence Fan</div>
+                    <div className="muted text-xs mb-3">All assets combined, after inflation-adjusted drawdown of {displayMoney(plan.expenses.monthlyDrawdown)}/mo · Bands: 10/25/50/75/90th percentile</div>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={mcAssets.combinedFan}>
+                          <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
+                          <XAxis dataKey="age" tick={{ fontSize: 11 }} />
+                          <YAxis tickFormatter={v => v >= 1000000 ? `£${(v/1000000).toFixed(1)}m` : `£${Math.round(v/1000)}k`} tick={{ fontSize: 11 }} width={72} />
+                          <Tooltip formatter={(v, name) => [displayMoney(v), name]} />
+                          <Area type="monotone" dataKey="p90" name="90th %" stroke="#166534" fill="#166534" fillOpacity={0.12} dot={false} strokeWidth={1} />
+                          <Area type="monotone" dataKey="p75" name="75th %" stroke="#16a34a" fill="#16a34a" fillOpacity={0.18} dot={false} strokeWidth={1} />
+                          <Area type="monotone" dataKey="p50" name="Median"   stroke="#22c55e" fill="#22c55e" fillOpacity={0.30} dot={false} strokeWidth={2} />
+                          <Area type="monotone" dataKey="p25" name="25th %" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} dot={false} strokeWidth={1} />
+                          <Area type="monotone" dataKey="p10" name="10th %" stroke="#ef4444" fill="#ef4444" fillOpacity={0.12} dot={false} strokeWidth={1} />
+                          <Legend iconType="circle" iconSize={8} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
                 </div>
               )}
 
