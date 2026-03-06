@@ -273,6 +273,7 @@
       ];
 
       const CURRENT_YEAR = new Date().getFullYear();
+      const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
       const CURRENCY = {
         GBP: 'GBP',
         ZAR: 'ZAR',
@@ -352,14 +353,16 @@
           { id: crypto.randomUUID(), name: 'S&P 500 ETF', startValue: 12000, cagr: 9, enabled: false },
           { id: crypto.randomUUID(), name: 'SA Property', startValue: 20000, cagr: 8, enabled: false },
         ],
-        portfolioAssets: [
+        isaPortfolio: [
           { id: crypto.randomUUID(), name: 'ISA (HL)',       value: 120000, cagrByYear: [7,7,7,7,7,7,7,7,7,7] },
-          { id: crypto.randomUUID(), name: 'SIPP',           value: 85000,  cagrByYear: [7,7,7,7,7,7,7,7,7,7] },
           { id: crypto.randomUUID(), name: 'AJ Bell',        value: 35000,  cagrByYear: [6,6,6,6,6,6,6,6,6,6] },
-          { id: crypto.randomUUID(), name: 'Crypto',         value: 72000,  cagrByYear: [15,15,12,12,10,10,10,8,8,8] },
           { id: crypto.randomUUID(), name: 'GGP',            value: 18000,  cagrByYear: [20,20,20,15,15,10,10,8,8,8] },
           { id: crypto.randomUUID(), name: 'TSLA',           value: 22000,  cagrByYear: [12,12,10,10,8,8,8,7,7,7] },
           { id: crypto.randomUUID(), name: 'London Property',value: 0,      cagrByYear: [3,3,3,3,3,3,3,3,3,3] },
+        ],
+        pensionPortfolio: [
+          { id: crypto.randomUUID(), name: 'SIPP',           value: 85000,  cagrByYear: [7,7,7,7,7,7,7,7,7,7] },
+          { id: crypto.randomUUID(), name: 'Crypto',         value: 72000,  cagrByYear: [15,15,12,12,10,10,10,8,8,8] },
         ],
         currency: {
           gbpZar: 23.5,
@@ -601,13 +604,12 @@
 
       // Per-asset Monte Carlo — uses cagrByYear, falls back to last year for years > 10
       function monteCarloAssets(plan, simulations = 500) {
-        const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
         const currentAge = Number(plan.people.stuart.age);
         const maxAge = Number(plan.people.lifeExpectancy);
         const years = maxAge - currentAge;
         const inflation = Number(plan.assumptions.inflation || 5) / 100;
         const volatility = Number(plan.assumptions.volatility || 10) / 100;
-        const assets = plan.portfolioAssets || [];
+        const assets = [...(plan.isaPortfolio || []), ...(plan.pensionPortfolio || [])];
         const baseDrawdown = (Number(plan.expenses.monthlyDrawdown) * 12);
 
         function assetCagr(asset, yearIdx) {
@@ -717,6 +719,7 @@
         const [newSaveName, setNewSaveName] = React.useState('');
         const [expandedAsset, setExpandedAsset] = React.useState(null);
         const [expMode, setExpMode] = React.useState('monthly');
+        const [portfolioSubTab, setPortfolioSubTab] = React.useState('combined');
 
         React.useEffect(() => {
           document.documentElement.setAttribute('data-theme', theme);
@@ -825,6 +828,65 @@
           setPlan((prev) => ({
             ...prev,
             [listKey]: prev[listKey].map((x) => (x.id === id ? { ...x, [field]: value } : x)),
+          }));
+        }
+
+        function projectAsset(asset, years = 10) {
+          const vals = [Number(asset.value || 0)];
+          for (let y = 0; y < years; y += 1) {
+            const rate = Number((asset.cagrByYear || [])[y] ?? 7) / 100;
+            vals.push(vals[vals.length - 1] * (1 + rate));
+          }
+          return vals;
+        }
+
+        function buildPortfolioProjectionData(assets, years = 10) {
+          const projections = assets.map((asset) => projectAsset(asset, years));
+          const chartData = Array.from({ length: years + 1 }, (_, y) => {
+            const row = { year: y === 0 ? 'Now' : `Y${y}` };
+            assets.forEach((asset, i) => {
+              row[asset.id] = Math.round(projections[i][y]);
+            });
+            row.__total = Math.round(sum(assets.map((_, i) => projections[i][y])));
+            return row;
+          });
+          return { projections, chartData };
+        }
+
+        function updateAsset(portfolioKey, id, field, value) {
+          setPlan((prev) => ({
+            ...prev,
+            [portfolioKey]: (prev[portfolioKey] || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)),
+          }));
+        }
+
+        function updateCagrYear(portfolioKey, id, yearIdx, value) {
+          setPlan((prev) => ({
+            ...prev,
+            [portfolioKey]: (prev[portfolioKey] || []).map((a) => {
+              if (a.id !== id) return a;
+              const cagrByYear = [...(a.cagrByYear || Array(10).fill(7))];
+              cagrByYear[yearIdx] = Number(value);
+              return { ...a, cagrByYear };
+            }),
+          }));
+        }
+
+        function addAsset(portfolioKey, maxAssets) {
+          setPlan((prev) => {
+            const assets = prev[portfolioKey] || [];
+            if (assets.length >= maxAssets) return prev;
+            return {
+              ...prev,
+              [portfolioKey]: [...assets, { id: crypto.randomUUID(), name: 'New Asset', value: 0, cagrByYear: Array(10).fill(7) }],
+            };
+          });
+        }
+
+        function removeAsset(portfolioKey, id) {
+          setPlan((prev) => ({
+            ...prev,
+            [portfolioKey]: (prev[portfolioKey] || []).filter((a) => a.id !== id),
           }));
         }
 
@@ -1781,179 +1843,362 @@
 
               {activeTab === 'Portfolio' && (
                 (() => {
-                  const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
-                  const assets = plan.portfolioAssets || [];
-                  const totalValue = sum(assets.map(a => Number(a.value || 0)));
-
-                  // Per-year compound projection: value grows by cagrByYear[y] in year y
-                  function projectAsset(a, years) {
-                    const vals = [Number(a.value || 0)];
-                    for (let y = 0; y < years; y++) {
-                      const rate = (Number((a.cagrByYear || [])[y] ?? 7)) / 100;
-                      vals.push(vals[vals.length - 1] * (1 + rate));
-                    }
-                    return vals; // length = years+1, index 0 = today
-                  }
-
-                  const projections = assets.map(a => projectAsset(a, 10));
-
-                  // Chart data: year 0-10
-                  const chartData = Array.from({ length: 11 }, (_, y) => {
-                    const row = { year: y === 0 ? 'Now' : `Y${y}` };
-                    assets.forEach((a, i) => { row[a.name] = Math.round(projections[i][y]); });
-                    row['__total'] = Math.round(sum(assets.map((_, i) => projections[i][y])));
-                    return row;
-                  });
-
-                  function updateAsset(id, field, val) {
-                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.map(a => a.id === id ? { ...a, [field]: val } : a) }));
-                  }
-                  function updateCagrYear(id, yearIdx, val) {
-                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.map(a => {
-                      if (a.id !== id) return a;
-                      const c = [...(a.cagrByYear || Array(10).fill(7))];
-                      c[yearIdx] = Number(val);
-                      return { ...a, cagrByYear: c };
-                    })}));
-                  }
-                  function addAsset() {
-                    if (assets.length >= 10) return;
-                    setPlan(prev => ({ ...prev, portfolioAssets: [...prev.portfolioAssets, { id: crypto.randomUUID(), name: 'New Asset', value: 0, cagrByYear: Array(10).fill(7) }] }));
-                  }
-                  function removeAsset(id) {
-                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.filter(a => a.id !== id) }));
-                  }
+                  const isaAssets = plan.isaPortfolio || [];
+                  const pensionAssets = plan.pensionPortfolio || [];
+                  const combinedAssets = [...isaAssets, ...pensionAssets];
+                  const isaTotal = sum(isaAssets.map((a) => Number(a.value || 0)));
+                  const pensionTotal = sum(pensionAssets.map((a) => Number(a.value || 0)));
+                  const grandTotal = isaTotal + pensionTotal;
+                  const isaProjection = buildPortfolioProjectionData(isaAssets, 10);
+                  const pensionProjection = buildPortfolioProjectionData(pensionAssets, 10);
+                  const combinedProjection = buildPortfolioProjectionData(combinedAssets, 10);
+                  const activePortfolioKey = portfolioSubTab === 'isa' ? 'isaPortfolio' : 'pensionPortfolio';
+                  const activeAssets = activePortfolioKey === 'isaPortfolio' ? isaAssets : pensionAssets;
+                  const activeTotal = sum(activeAssets.map((a) => Number(a.value || 0)));
+                  const activeProjection = activePortfolioKey === 'isaPortfolio' ? isaProjection : pensionProjection;
+                  const activeMaxAssets = activePortfolioKey === 'isaPortfolio' ? 10 : 20;
+                  const activeTitle = activePortfolioKey === 'isaPortfolio' ? 'ISA Portfolio Builder' : 'Pension Portfolio Builder';
 
                   return (
                     <div className="space-y-4">
-
-                      {/* Row 1: Pie + Total */}
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div className="panel rounded-xl p-4 lg:col-span-1">
-                          <div className="font-semibold mb-1">Portfolio Allocation</div>
-                          <div className="muted text-xs mb-3">Total: {fmtMoney(totalValue, 'GBP')}</div>
-                          <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie data={assets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
-                                  cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
-                                  label={({ name, percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
-                                  labelLine={false}
-                                >
-                                  {assets.map((_, i) => <Cell key={i} fill={PA_COLORS[i % 10]} />)}
-                                </Pie>
-                                <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
-                                <Legend iconType="circle" iconSize={8} />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-
-                        <div className="panel rounded-xl p-4 lg:col-span-2">
-                          <div className="font-semibold mb-3">10-Year CAGR Projection</div>
-                          <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={chartData}>
-                                <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
-                                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                                <YAxis tickFormatter={v => v >= 1000000 ? `£${(v/1000000).toFixed(1)}m` : `£${Math.round(v/1000)}k`} tick={{ fontSize: 11 }} width={70} />
-                                <Tooltip formatter={(v, name) => [fmtMoney(v, 'GBP'), name]} />
-                                <Legend iconType="circle" iconSize={8} />
-                                {assets.map((a, i) => (
-                                  <Line key={a.id} type="monotone" dataKey={a.name} stroke={PA_COLORS[i % 10]} dot={false} strokeWidth={2} />
-                                ))}
-                                <Line type="monotone" dataKey="__total" name="Total" stroke="#ffffff" dot={false} strokeWidth={2} strokeDasharray="5 4" />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
+                      <div className="flex gap-2">
+                        {['isa', 'pension', 'combined'].map((tab) => (
+                          <button
+                            key={tab}
+                            onClick={() => setPortfolioSubTab(tab)}
+                            className={`px-3 py-2 rounded border ${
+                              portfolioSubTab === tab ? 'border-positive text-positive bg-green-900/20' : 'border-slate-700 muted'
+                            }`}
+                          >
+                            {tab}
+                          </button>
+                        ))}
                       </div>
 
-                      {/* Row 2: Asset Builder */}
-                      <div className="panel rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="font-semibold">Portfolio Builder <span className="muted text-xs">({assets.length}/10 assets)</span></div>
-                          {assets.length < 10 && (
-                            <button className="btn px-3 py-1 rounded text-sm" onClick={addAsset}>+ Add Asset</button>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          {assets.map((a, i) => (
-                            <div key={a.id} className="rounded-lg border" style={{ borderColor: PA_COLORS[i % 10] + '55', background: 'var(--panel-2)' }}>
-                              {/* Asset header row */}
-                              <div className="flex flex-wrap items-center gap-2 p-3">
-                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: PA_COLORS[i % 10] }}></div>
-                                <input className="field rounded px-2 py-1 text-sm font-medium flex-1 min-w-32"
-                                  value={a.name} onChange={e => updateAsset(a.id, 'name', e.target.value)} />
-                                <div className="flex items-center gap-1 text-xs muted">
-                                  <span>£</span>
-                                  <input className="field rounded px-2 py-1 text-sm w-28 text-right" type="number"
-                                    value={a.value} onChange={e => updateAsset(a.id, 'value', Number(e.target.value))} />
-                                </div>
-                                <div className="text-xs muted">{totalValue > 0 ? ((Number(a.value||0)/totalValue)*100).toFixed(1) : 0}%</div>
-                                <button className="text-xs muted hover:text-white px-2 py-1 rounded border" style={{ borderColor: 'var(--line)' }}
-                                  onClick={() => setExpandedAsset(expandedAsset === a.id ? null : a.id)}>
-                                  {expandedAsset === a.id ? '▲ CAGR/yr' : '▼ CAGR/yr'}
-                                </button>
-                                <button className="text-xs text-negative px-2 py-1 rounded hover:opacity-80" onClick={() => removeAsset(a.id)}>✕</button>
+                      {(portfolioSubTab === 'isa' || portfolioSubTab === 'pension') && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="panel rounded-xl p-4">
+                              <div className="font-semibold mb-1">{portfolioSubTab === 'isa' ? 'ISA Allocation' : 'Pension Allocation'}</div>
+                              <div className="muted text-xs mb-3">Total: {fmtMoney(activeTotal, 'GBP')}</div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie
+                                      data={activeAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                      cx="50%"
+                                      cy="50%"
+                                      outerRadius={90}
+                                      innerRadius={45}
+                                      dataKey="value"
+                                      paddingAngle={2}
+                                      label={({ percent }) => (percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : '')}
+                                      labelLine={false}
+                                    >
+                                      {activeAssets.map((_, i) => <Cell key={i} fill={PA_COLORS[i % 10]} />)}
+                                    </Pie>
+                                    <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
+                                    <Legend iconType="circle" iconSize={8} />
+                                  </PieChart>
+                                </ResponsiveContainer>
                               </div>
-                              {/* Per-year CAGR row */}
-                              {expandedAsset === a.id && (
-                                <div className="px-3 pb-3 border-t" style={{ borderColor: 'var(--line)' }}>
-                                  <div className="text-xs muted mt-2 mb-2">CAGR % per year (Year 1–10)</div>
-                                  <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                                    {(a.cagrByYear || Array(10).fill(7)).map((rate, yi) => (
-                                      <div key={yi} className="text-center">
-                                        <div className="text-xs muted mb-1">Y{yi + 1}</div>
-                                        <input className="field rounded px-1 py-1 text-xs text-center w-full" type="number"
-                                          value={rate} onChange={e => updateCagrYear(a.id, yi, e.target.value)} />
-                                      </div>
+                            </div>
+
+                            <div className="panel rounded-xl p-4">
+                              <div className="font-semibold mb-3">10-Year CAGR Projection</div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart data={activeProjection.chartData}>
+                                    <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
+                                    <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                                    <YAxis tickFormatter={(v) => (v >= 1000000 ? `£${(v / 1000000).toFixed(1)}m` : `£${Math.round(v / 1000)}k`)} tick={{ fontSize: 11 }} width={70} />
+                                    <Tooltip formatter={(v, name) => [fmtMoney(v, 'GBP'), name]} />
+                                    <Legend iconType="circle" iconSize={8} />
+                                    {activeAssets.map((a, i) => (
+                                      <Line key={a.id} type="monotone" dataKey={a.id} name={a.name} stroke={PA_COLORS[i % 10]} dot={false} strokeWidth={2} />
                                     ))}
-                                  </div>
-                                </div>
+                                    <Line type="monotone" dataKey="__total" name="Total" stroke="#ffffff" dot={false} strokeWidth={2} strokeDasharray="5 4" />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="panel rounded-xl p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="font-semibold">{activeTitle} <span className="muted text-xs">({activeAssets.length}/{activeMaxAssets} assets)</span></div>
+                              {activeAssets.length < activeMaxAssets && (
+                                <button className="btn px-3 py-1 rounded text-sm" onClick={() => addAsset(activePortfolioKey, activeMaxAssets)}>+ Add Asset</button>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                            <div className="space-y-2">
+                              {activeAssets.map((a, i) => {
+                                const expandedKey = `${activePortfolioKey}-${a.id}`;
+                                return (
+                                  <div key={a.id} className="rounded-lg border" style={{ borderColor: PA_COLORS[i % 10] + '55', background: 'var(--panel-2)' }}>
+                                    <div className="flex flex-wrap items-center gap-2 p-3">
+                                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: PA_COLORS[i % 10] }}></div>
+                                      <input
+                                        className="field rounded px-2 py-1 text-sm font-medium flex-1 min-w-32"
+                                        value={a.name}
+                                        onChange={(e) => updateAsset(activePortfolioKey, a.id, 'name', e.target.value)}
+                                      />
+                                      <div className="flex items-center gap-1 text-xs muted">
+                                        <span>£</span>
+                                        <input
+                                          className="field rounded px-2 py-1 text-sm w-28 text-right"
+                                          type="number"
+                                          value={a.value}
+                                          onChange={(e) => updateAsset(activePortfolioKey, a.id, 'value', Number(e.target.value))}
+                                        />
+                                      </div>
+                                      <div className="text-xs muted">{activeTotal > 0 ? ((Number(a.value || 0) / activeTotal) * 100).toFixed(1) : 0}%</div>
+                                      <button
+                                        className="text-xs muted hover:text-white px-2 py-1 rounded border"
+                                        style={{ borderColor: 'var(--line)' }}
+                                        onClick={() => setExpandedAsset(expandedAsset === expandedKey ? null : expandedKey)}
+                                      >
+                                        {expandedAsset === expandedKey ? '▲ CAGR/yr' : '▼ CAGR/yr'}
+                                      </button>
+                                      <button className="text-xs text-negative px-2 py-1 rounded hover:opacity-80" onClick={() => removeAsset(activePortfolioKey, a.id)}>✕</button>
+                                    </div>
+                                    {expandedAsset === expandedKey && (
+                                      <div className="px-3 pb-3 border-t" style={{ borderColor: 'var(--line)' }}>
+                                        <div className="text-xs muted mt-2 mb-2">CAGR % per year (Year 1–10)</div>
+                                        <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                                          {(a.cagrByYear || Array(10).fill(7)).map((rate, yi) => (
+                                            <div key={yi} className="text-center">
+                                              <div className="text-xs muted mb-1">Y{yi + 1}</div>
+                                              <input
+                                                className="field rounded px-1 py-1 text-xs text-center w-full"
+                                                type="number"
+                                                value={rate}
+                                                onChange={(e) => updateCagrYear(activePortfolioKey, a.id, yi, e.target.value)}
+                                              />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
 
-                      {/* Row 3: Projection Table */}
-                      <div className="panel rounded-xl p-4 overflow-auto">
-                        <div className="font-semibold mb-3">Year-by-Year Projection Table</div>
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
-                              <th className="p-2 text-left">Year</th>
-                              {assets.map((a, i) => (
-                                <th key={a.id} className="p-2 text-right" style={{ color: PA_COLORS[i % 10] }}>{a.name}</th>
-                              ))}
-                              <th className="p-2 text-right text-white">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Array.from({ length: 11 }, (_, y) => {
-                              const vals = assets.map((_, i) => projections[i][y]);
-                              const total = sum(vals);
-                              return (
-                                <tr key={y} className="border-b hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>
-                                  <td className="p-2 muted">{y === 0 ? 'Now' : `Year ${y} (${CURRENT_YEAR + y})`}</td>
-                                  {vals.map((v, i) => (
-                                    <td key={i} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>
+                          <div className="panel rounded-xl p-4 overflow-auto">
+                            <div className="font-semibold mb-3">Year-by-Year Projection Table</div>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                                  <th className="p-2 text-left">Year</th>
+                                  {activeAssets.map((a, i) => (
+                                    <th key={a.id} className="p-2 text-right" style={{ color: PA_COLORS[i % 10] }}>{a.name}</th>
                                   ))}
-                                  <td className="p-2 text-right font-semibold text-positive">{fmtMoney(total, 'GBP')}</td>
+                                  <th className="p-2 text-right text-white">Total</th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                              </thead>
+                              <tbody>
+                                {Array.from({ length: 11 }, (_, y) => {
+                                  const vals = activeAssets.map((_, i) => activeProjection.projections[i][y]);
+                                  const total = sum(vals);
+                                  return (
+                                    <tr key={y} className="border-b hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>
+                                      <td className="p-2 muted">{y === 0 ? 'Now' : `Year ${y} (${CURRENT_YEAR + y})`}</td>
+                                      {vals.map((v, i) => (
+                                        <td key={i} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>
+                                      ))}
+                                      <td className="p-2 text-right font-semibold text-positive">{fmtMoney(total, 'GBP')}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
 
+                          {portfolioSubTab === 'isa' && (
+                            <div className="panel rounded-xl p-4 space-y-3">
+                              <div>
+                                <div className="font-semibold">ISA Drawdown Phase (Age 46 → 57)</div>
+                                <div className="muted text-xs">Draws from ISA only. SIPP untouched. Rental income covers partial expenses.</div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                                  <div className="muted">ISA start value</div>
+                                  <div className="font-semibold">{displayMoney(isaPhaseData[0]?.isaBalance || 0)}</div>
+                                </div>
+                                <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                                  <div className="muted">Expenses @57</div>
+                                  <div className="font-semibold">{displayMoney((isaPhaseData[isaPhaseData.length - 1]?.inflationAdjustedExpense || 0) / 12)}/mo</div>
+                                </div>
+                              </div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart data={isaPhaseData}>
+                                    <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                                    <XAxis dataKey="age" />
+                                    <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                                    <Tooltip formatter={(v) => displayMoney(v)} />
+                                    <Line type="monotone" dataKey="isaBalance" name="ISA Balance" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                              <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)' }}>
+                                <div className="text-sm">Projected ISA remaining at age 57</div>
+                                <div className="font-semibold text-positive">{displayMoney(isaPhaseData[isaPhaseData.length - 1]?.isaBalance || 0)}</div>
+                              </div>
+                            </div>
+                          )}
+
+                          {portfolioSubTab === 'pension' && (
+                            <div className="panel rounded-xl p-4 space-y-3">
+                              <div>
+                                <div className="font-semibold">SIPP Drawdown Phase (Age 57 → 90) — incl. 25% PCLS</div>
+                                <div className="muted text-xs">At age 57, take 25% tax-free lump sum from SIPP. Remaining 75% taxed as income on drawdown.</div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div className="rounded-lg p-3" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)' }}>
+                                  <div className="muted">PCLS amount</div>
+                                  <div className="font-semibold text-positive">{displayMoney(sippPhaseData.pcls)}</div>
+                                </div>
+                                <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                                  <div className="muted">SIPP at 57</div>
+                                  <div className="font-semibold">{displayMoney(sippPhaseData.sippAt57)}</div>
+                                </div>
+                              </div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart data={sippPhaseData.rows}>
+                                    <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                                    <XAxis dataKey="age" />
+                                    <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                                    <Tooltip formatter={(v) => displayMoney(v)} />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="isaBalance" name="ISA Remaining" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="sippBalance" name="SIPP Remaining" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {portfolioSubTab === 'combined' && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="panel rounded-xl p-4"><div className="muted text-xs">ISA Total</div><div className="font-semibold">{fmtMoney(isaTotal, 'GBP')}</div></div>
+                            <div className="panel rounded-xl p-4"><div className="muted text-xs">Pension Total</div><div className="font-semibold">{fmtMoney(pensionTotal, 'GBP')}</div></div>
+                            <div className="panel rounded-xl p-4"><div className="muted text-xs">Grand Total</div><div className="font-semibold text-positive">{fmtMoney(grandTotal, 'GBP')}</div></div>
+                            <div className="panel rounded-xl p-4"><div className="muted text-xs">Asset Count</div><div className="font-semibold">{combinedAssets.length}</div></div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="panel rounded-xl p-4">
+                              <div className="font-semibold mb-1">ISA Allocation</div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={isaAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                      cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
+                                      label={({ percent }) => (percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : '')}
+                                      labelLine={false}
+                                    >
+                                      {isaAssets.map((_, i) => <Cell key={i} fill={PA_COLORS[i % 10]} />)}
+                                    </Pie>
+                                    <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
+                                    <Legend iconType="circle" iconSize={8} />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                            <div className="panel rounded-xl p-4">
+                              <div className="font-semibold mb-1">Pension Allocation</div>
+                              <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={pensionAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                      cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
+                                      label={({ percent }) => (percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : '')}
+                                      labelLine={false}
+                                    >
+                                      {pensionAssets.map((_, i) => <Cell key={i} fill={PA_COLORS[i % 10]} />)}
+                                    </Pie>
+                                    <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
+                                    <Legend iconType="circle" iconSize={8} />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="panel rounded-xl p-4">
+                            <div className="font-semibold mb-3">Combined 10-Year CAGR Projection</div>
+                            <div className="h-64">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={combinedProjection.chartData}>
+                                  <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
+                                  <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                                  <YAxis tickFormatter={(v) => (v >= 1000000 ? `£${(v / 1000000).toFixed(1)}m` : `£${Math.round(v / 1000)}k`)} tick={{ fontSize: 11 }} width={70} />
+                                  <Tooltip formatter={(v, name) => [fmtMoney(v, 'GBP'), name]} />
+                                  <Legend iconType="circle" iconSize={8} />
+                                  {combinedAssets.map((a, i) => (
+                                    <Line key={a.id} type="monotone" dataKey={a.id} name={a.name} stroke={PA_COLORS[i % 10]} dot={false} strokeWidth={2} />
+                                  ))}
+                                  <Line type="monotone" dataKey="__total" name="Total" stroke="#ffffff" dot={false} strokeWidth={2} strokeDasharray="5 4" />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+
+                          <div className="panel rounded-xl p-4 overflow-auto">
+                            <div className="font-semibold mb-3">Year-by-Year Projection Table</div>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                                  <th className="p-2 text-left" rowSpan={2}>Year</th>
+                                  <th className="p-2 text-center" colSpan={Math.max(1, isaAssets.length)}>ISA Assets</th>
+                                  <th className="p-2 text-center" colSpan={Math.max(1, pensionAssets.length)}>Pension Assets</th>
+                                  <th className="p-2 text-right" rowSpan={2}>ISA Subtotal</th>
+                                  <th className="p-2 text-right" rowSpan={2}>Pension Subtotal</th>
+                                  <th className="p-2 text-right" rowSpan={2}>Grand Total</th>
+                                </tr>
+                                <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                                  {(isaAssets.length ? isaAssets : [{ id: 'isa-none', name: 'None' }]).map((a, i) => (
+                                    <th key={a.id} className="p-2 text-right" style={{ color: PA_COLORS[i % 10] }}>{a.name}</th>
+                                  ))}
+                                  {(pensionAssets.length ? pensionAssets : [{ id: 'pension-none', name: 'None' }]).map((a, i) => (
+                                    <th key={a.id} className="p-2 text-right" style={{ color: PA_COLORS[i % 10] }}>{a.name}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Array.from({ length: 11 }, (_, y) => {
+                                  const isaVals = isaAssets.map((_, i) => isaProjection.projections[i][y]);
+                                  const pensionVals = pensionAssets.map((_, i) => pensionProjection.projections[i][y]);
+                                  const isaSubtotal = sum(isaVals);
+                                  const pensionSubtotal = sum(pensionVals);
+                                  const total = isaSubtotal + pensionSubtotal;
+                                  return (
+                                    <tr key={y} className="border-b hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>
+                                      <td className="p-2 muted">{y === 0 ? 'Now' : `Year ${y} (${CURRENT_YEAR + y})`}</td>
+                                      {(isaAssets.length ? isaVals : [0]).map((v, i) => <td key={`isa-${i}`} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>)}
+                                      {(pensionAssets.length ? pensionVals : [0]).map((v, i) => <td key={`pension-${i}`} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>)}
+                                      <td className="p-2 text-right">{fmtMoney(isaSubtotal, 'GBP')}</td>
+                                      <td className="p-2 text-right">{fmtMoney(pensionSubtotal, 'GBP')}</td>
+                                      <td className="p-2 text-right font-semibold text-positive">{fmtMoney(total, 'GBP')}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()
               )}
-
               {activeTab === 'Milestones' && (
                 <div className="space-y-6">
                   <div className="panel rounded-xl p-6">
