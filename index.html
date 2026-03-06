@@ -274,6 +274,7 @@
 
       const CURRENT_YEAR = new Date().getFullYear();
       const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
+      const CURRENCY_FLAGS = { GBP: '🇬🇧', USD: '🇺🇸', AUD: '🇦🇺' };
       const CURRENCY = {
         GBP: 'GBP',
         ZAR: 'ZAR',
@@ -289,9 +290,9 @@
         },
         assumptions: {
           expectedReturn: 7,
-          inflation: 5,
+          inflation: 4,
           volatility: 14,
-          saInflation: 5,
+          saInflation: 4,
           yearsToSimulate: 44,
         },
         accounts: [
@@ -354,23 +355,18 @@
           { id: crypto.randomUUID(), name: 'SA Property', startValue: 20000, cagr: 8, enabled: false },
         ],
         isaPortfolio: [
-          { id: crypto.randomUUID(), name: 'ISA (HL) Core',    value: 95000,  cagrByYear: [7,7,7,8,8,8,7,7,7,7] },
-          { id: crypto.randomUUID(), name: 'AJ Bell',          value: 35000,  cagrByYear: [6,6,6,6,7,7,7,6,6,6] },
-          { id: crypto.randomUUID(), name: 'GGP',              value: 18000,  cagrByYear: [25,25,20,15,12,10,10,8,8,8] },
-          { id: crypto.randomUUID(), name: 'TSLA',             value: 22000,  cagrByYear: [14,14,12,10,9,9,8,8,7,7] },
-          { id: crypto.randomUUID(), name: 'S&P 500 ETF',      value: 28000,  cagrByYear: [9,9,9,9,9,8,8,8,8,8] },
-          { id: crypto.randomUUID(), name: 'MSFT',             value: 12000,  cagrByYear: [10,10,9,9,8,8,8,7,7,7] },
-          { id: crypto.randomUUID(), name: 'Gold ETF',         value: 8000,   cagrByYear: [6,5,5,5,5,5,4,4,4,4] },
-          { id: crypto.randomUUID(), name: 'Vodafone',         value: 4500,   cagrByYear: [3,3,3,4,4,4,4,4,3,3] },
-          { id: crypto.randomUUID(), name: 'BP',               value: 6000,   cagrByYear: [4,4,5,5,4,4,4,3,3,3] },
-          { id: crypto.randomUUID(), name: 'Cash (ISA)',       value: 5000,   cagrByYear: [4,4,3,3,3,3,3,3,3,3] },
+          { id: crypto.randomUUID(), name: 'TSLA',       value: 22000, currency: 'USD', cagrByYear: [20,20,20,20,20,20,20,20,20,20] },
+          { id: crypto.randomUUID(), name: 'MSTR',       value: 8500,  currency: 'USD', cagrByYear: [20,18,16,14,12,10,10,10,10,10] },
+          { id: crypto.randomUUID(), name: 'GGP (ASX)',  value: 12000, currency: 'AUD', cagrByYear: [20,18,16,14,12,10,10,10,10,10] },
+          { id: crypto.randomUUID(), name: 'STRC',       value: 5000,  currency: 'USD', cagrByYear: [20,18,16,14,12,10,10,10,10,10] },
+          { id: crypto.randomUUID(), name: 'Cash (ISA)', value: 15000, currency: 'GBP', cagrByYear: [4,4,4,4,4,4,4,4,4,4] },
         ],
         pensionPortfolio: [
-          { id: crypto.randomUUID(), name: 'SIPP Core',        value: 85000,  cagrByYear: [7,7,7,8,8,8,8,7,7,7] },
-          { id: crypto.randomUUID(), name: 'Crypto (total)',   value: 72000,  cagrByYear: [18,16,14,12,10,10,9,8,8,8] },
-          { id: crypto.randomUUID(), name: 'Bitcoin',          value: 32000,  cagrByYear: [20,18,15,12,10,10,8,8,8,8] },
-          { id: crypto.randomUUID(), name: 'Ethereum',         value: 18000,  cagrByYear: [18,16,14,12,10,9,9,8,8,7] },
-          { id: crypto.randomUUID(), name: 'Emerging Markets', value: 14000,  cagrByYear: [8,8,9,9,9,8,8,8,7,7] },
+          { id: crypto.randomUUID(), name: 'SIPP Core',        value: 85000, currency: 'GBP', cagrByYear: [7,7,7,8,8,8,8,7,7,7] },
+          { id: crypto.randomUUID(), name: 'Crypto (total)',   value: 72000, currency: 'USD', cagrByYear: [18,16,14,12,10,10,9,8,8,8] },
+          { id: crypto.randomUUID(), name: 'Bitcoin',          value: 32000, currency: 'USD', cagrByYear: [20,18,15,12,10,10,8,8,8,8] },
+          { id: crypto.randomUUID(), name: 'Ethereum',         value: 18000, currency: 'USD', cagrByYear: [18,16,14,12,10,9,9,8,8,7] },
+          { id: crypto.randomUUID(), name: 'Emerging Markets', value: 14000, currency: 'GBP', cagrByYear: [8,8,9,9,9,8,8,8,7,7] },
         ],
         jisaPortfolios: [
           {
@@ -398,6 +394,8 @@
         ],
         currency: {
           gbpZar: 23.5,
+          usdGbp: 0.787,
+          audGbp: 0.497,
           display: CURRENCY.GBP,
           scenario: 'base',
         },
@@ -910,7 +908,7 @@
             if (assets.length >= maxAssets) return prev;
             return {
               ...prev,
-              [portfolioKey]: [...assets, { id: crypto.randomUUID(), name: 'New Asset', value: 0, cagrByYear: Array(10).fill(7) }],
+              [portfolioKey]: [...assets, { id: crypto.randomUUID(), name: 'New Asset', value: 0, currency: 'GBP', cagrByYear: Array(10).fill(7) }],
             };
           });
         }
@@ -1220,6 +1218,20 @@
               },
             };
           });
+        }
+
+        function toGBP(value, assetCurrency, plan) {
+          const v = Number(value || 0);
+          if (assetCurrency === 'USD') return v * Number(plan.currency.usdGbp || 0.787);
+          if (assetCurrency === 'AUD') return v * Number(plan.currency.audGbp || 0.497);
+          return v; // GBP
+        }
+
+        function fmtNative(value, assetCurrency) {
+          const v = Number(value || 0);
+          if (assetCurrency === 'USD') return '$' + v.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+          if (assetCurrency === 'AUD') return 'A$' + v.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+          return '£' + v.toLocaleString('en-GB', { maximumFractionDigits: 0 });
         }
 
         return (
@@ -1839,38 +1851,72 @@
               )}
 
               {activeTab === 'Currency' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="panel rounded-xl p-4 space-y-3">
-                    <div className="font-medium">Currency Management</div>
-                    <label className="block">
-                      <div className="muted">GBP/ZAR rate</div>
-                      <input className="field rounded px-2 py-1 w-full" type="number" step="0.1" value={plan.currency.gbpZar} onChange={(e) => updatePlan(['currency', 'gbpZar'], Number(e.target.value))} />
-                    </label>
-                    <label className="block">
-                      <div className="muted">Display mode</div>
-                      <select className="select rounded px-2 py-1 w-full" value={plan.currency.display} onChange={(e) => updatePlan(['currency', 'display'], e.target.value)}>
-                        <option value="GBP">GBP</option>
-                        <option value="ZAR">ZAR</option>
-                        <option value="BOTH">Both</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <div className="muted">Exchange Scenario</div>
-                      <select className="select rounded px-2 py-1 w-full" value={plan.currency.scenario} onChange={(e) => updatePlan(['currency', 'scenario'], e.target.value)}>
-                        <option value="base">Base</option>
-                        <option value="weak">Weak Rand (+20%)</option>
-                        <option value="strong">Strong Rand (-20%)</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="panel rounded-xl p-4 space-y-2">
-                    <div className="font-medium">Converted Values</div>
-                    <div>Effective FX rate: {currencyRate.toFixed(2)}</div>
-                    <div>Monthly drawdown: {fmtMoney(plan.expenses.monthlyDrawdown, 'GBP')} / {fmtMoney(plan.expenses.monthlyDrawdown * currencyRate, 'ZAR')}</div>
-                    <div>Total assets: {displayMoney(totalAssets)}</div>
-                    <div>Monthly surplus: <span className={monthlySurplus >= 0 ? 'text-positive' : 'text-negative'}>{displayMoney(monthlySurplus)}</span></div>
-                  </div>
-                </div>
+                (() => {
+                  const allPortfolioAssets = [...(plan.isaPortfolio || []), ...(plan.pensionPortfolio || [])];
+                  const usdNativeTotal = sum(allPortfolioAssets.filter((a) => (a.currency || 'GBP') === 'USD').map((a) => Number(a.value || 0)));
+                  const audNativeTotal = sum(allPortfolioAssets.filter((a) => (a.currency || 'GBP') === 'AUD').map((a) => Number(a.value || 0)));
+                  const gbpNativeTotal = sum(allPortfolioAssets.filter((a) => (a.currency || 'GBP') === 'GBP').map((a) => Number(a.value || 0)));
+                  const usdAsGbp = usdNativeTotal * Number(plan.currency.usdGbp || 0.787);
+                  const audAsGbp = audNativeTotal * Number(plan.currency.audGbp || 0.497);
+                  const totalPortfolioGbp = gbpNativeTotal + usdAsGbp + audAsGbp;
+                  const tslaHolding = (plan.isaPortfolio || []).find((a) => a.name === 'TSLA');
+                  const tslaNative = Number(tslaHolding?.value || 22000);
+                  const tslaGbp = toGBP(tslaNative, tslaHolding?.currency || 'USD', plan);
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="panel rounded-xl p-4 space-y-3">
+                          <div className="font-medium">Currency Management</div>
+                          <label className="block">
+                            <div className="muted">GBP/ZAR rate</div>
+                            <input className="field rounded px-2 py-1 w-full" type="number" step="0.1" value={plan.currency.gbpZar} onChange={(e) => updatePlan(['currency', 'gbpZar'], Number(e.target.value))} />
+                          </label>
+                          <label className="block">
+                            <div className="muted">1 USD = £X</div>
+                            <input className="field rounded px-2 py-1 w-full" type="number" step="0.001" value={plan.currency.usdGbp || 0.787} onChange={(e) => updatePlan(['currency', 'usdGbp'], Number(e.target.value))} />
+                          </label>
+                          <label className="block">
+                            <div className="muted">1 AUD = £X</div>
+                            <input className="field rounded px-2 py-1 w-full" type="number" step="0.001" value={plan.currency.audGbp || 0.497} onChange={(e) => updatePlan(['currency', 'audGbp'], Number(e.target.value))} />
+                          </label>
+                          <label className="block">
+                            <div className="muted">Display mode</div>
+                            <select className="select rounded px-2 py-1 w-full" value={plan.currency.display} onChange={(e) => updatePlan(['currency', 'display'], e.target.value)}>
+                              <option value="GBP">GBP</option>
+                              <option value="ZAR">ZAR</option>
+                              <option value="BOTH">Both</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <div className="muted">Exchange Scenario</div>
+                            <select className="select rounded px-2 py-1 w-full" value={plan.currency.scenario} onChange={(e) => updatePlan(['currency', 'scenario'], e.target.value)}>
+                              <option value="base">Base</option>
+                              <option value="weak">Weak Rand (+20%)</option>
+                              <option value="strong">Strong Rand (-20%)</option>
+                            </select>
+                          </label>
+                          <div className="text-xs muted">Rates are manually set. Update from your broker.</div>
+                        </div>
+                        <div className="panel rounded-xl p-4 space-y-2">
+                          <div className="font-medium">Converted Values</div>
+                          <div>Effective FX rate: {currencyRate.toFixed(2)}</div>
+                          <div>Monthly drawdown: {fmtMoney(plan.expenses.monthlyDrawdown, 'GBP')} / {fmtMoney(plan.expenses.monthlyDrawdown * currencyRate, 'ZAR')}</div>
+                          <div>Total assets: {displayMoney(totalAssets)}</div>
+                          <div>Monthly surplus: <span className={monthlySurplus >= 0 ? 'text-positive' : 'text-negative'}>{displayMoney(monthlySurplus)}</span></div>
+                          <div>Your TSLA holding: {fmtNative(tslaNative, 'USD')} = {fmtMoney(tslaGbp, 'GBP')}</div>
+                        </div>
+                      </div>
+                      <div className="panel rounded-xl p-4 space-y-2">
+                        <div className="font-medium">Multi-Currency Holdings (ISA + Pension)</div>
+                        <div>🇬🇧 GBP total (ISA+Pension): {fmtMoney(gbpNativeTotal, 'GBP')}</div>
+                        <div>🇺🇸 USD holdings: {fmtNative(usdNativeTotal, 'USD')} (= {fmtMoney(usdAsGbp, 'GBP')} at current rate)</div>
+                        <div>🇦🇺 AUD holdings: {fmtNative(audNativeTotal, 'AUD')} (= {fmtMoney(audAsGbp, 'GBP')} at current rate)</div>
+                        <div className="font-semibold">GBP-equivalent total: {fmtMoney(totalPortfolioGbp, 'GBP')}</div>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
 
               {activeTab === 'Portfolio' && (
@@ -1878,16 +1924,20 @@
                   const isaAssets = plan.isaPortfolio || [];
                   const pensionAssets = plan.pensionPortfolio || [];
                   const combinedAssets = [...isaAssets, ...pensionAssets];
-                  const isaTotal = sum(isaAssets.map((a) => Number(a.value || 0)));
-                  const pensionTotal = sum(pensionAssets.map((a) => Number(a.value || 0)));
+                  const isaTotal = sum(isaAssets.map((a) => toGBP(a.value, a.currency, plan)));
+                  const pensionTotal = sum(pensionAssets.map((a) => toGBP(a.value, a.currency, plan)));
                   const grandTotal = isaTotal + pensionTotal;
-                  const isaProjection = buildPortfolioProjectionData(isaAssets, 10);
-                  const pensionProjection = buildPortfolioProjectionData(pensionAssets, 10);
-                  const combinedProjection = buildPortfolioProjectionData(combinedAssets, 10);
+                  const isaAssetsGBP = isaAssets.map((a) => ({ ...a, value: toGBP(a.value, a.currency, plan) }));
+                  const pensionAssetsGBP = pensionAssets.map((a) => ({ ...a, value: toGBP(a.value, a.currency, plan) }));
+                  const combinedAssetsGBP = combinedAssets.map((a) => ({ ...a, value: toGBP(a.value, a.currency, plan) }));
+                  const isaProjection = buildPortfolioProjectionData(isaAssetsGBP, 10);
+                  const pensionProjection = buildPortfolioProjectionData(pensionAssetsGBP, 10);
+                  const combinedProjection = buildPortfolioProjectionData(combinedAssetsGBP, 10);
                   const activePortfolioKey = portfolioSubTab === 'isa' ? 'isaPortfolio' : 'pensionPortfolio';
                   const activeAssets = activePortfolioKey === 'isaPortfolio' ? isaAssets : pensionAssets;
-                  const activeTotal = sum(activeAssets.map((a) => Number(a.value || 0)));
-                  const activeProjection = activePortfolioKey === 'isaPortfolio' ? isaProjection : pensionProjection;
+                  const activeAssetsGBP = activeAssets.map((a) => ({ ...a, value: toGBP(a.value, a.currency, plan) }));
+                  const activeTotal = sum(activeAssets.map((a) => toGBP(a.value, a.currency, plan)));
+                  const activeProjection = buildPortfolioProjectionData(activeAssetsGBP, 10);
                   const activeMaxAssets = activePortfolioKey === 'isaPortfolio' ? 10 : 20;
                   const activeTitle = activePortfolioKey === 'isaPortfolio' ? 'ISA Portfolio Builder' : 'Pension Portfolio Builder';
 
@@ -1917,7 +1967,7 @@
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>
                                     <Pie
-                                      data={activeAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                      data={activeAssets.map((a, i) => ({ name: a.name, value: toGBP(a.value, a.currency, plan), fill: PA_COLORS[i % 10] }))}
                                       cx="50%"
                                       cy="50%"
                                       outerRadius={90}
@@ -1984,7 +2034,17 @@
                                           onChange={(e) => updateAsset(activePortfolioKey, a.id, 'value', Number(e.target.value))}
                                         />
                                       </div>
-                                      <div className="text-xs muted">{activeTotal > 0 ? ((Number(a.value || 0) / activeTotal) * 100).toFixed(1) : 0}%</div>
+                                      <div className="text-xs muted">{activeTotal > 0 ? ((toGBP(a.value, a.currency, plan) / activeTotal) * 100).toFixed(1) : 0}%</div>
+                                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: '#9fb0d0' }}>
+                                        {CURRENCY_FLAGS[a.currency || 'GBP']} {a.currency || 'GBP'}
+                                      </span>
+                                      <select className="select rounded px-1 py-0.5 text-xs" value={a.currency || 'GBP'}
+                                        onChange={(e) => updateAsset(activePortfolioKey, a.id, 'currency', e.target.value)}>
+                                        <option value="GBP">GBP</option>
+                                        <option value="USD">USD</option>
+                                        <option value="AUD">AUD</option>
+                                      </select>
+                                      <span className="text-xs muted">= {fmtMoney(toGBP(a.value, a.currency, plan), 'GBP')}</span>
                                       <button
                                         className="text-xs muted hover:text-white px-2 py-1 rounded border"
                                         style={{ borderColor: 'var(--line)' }}
@@ -2131,7 +2191,7 @@
                               <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>
-                                    <Pie data={isaAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                    <Pie data={isaAssets.map((a, i) => ({ name: a.name, value: toGBP(a.value, a.currency, plan), fill: PA_COLORS[i % 10] }))}
                                       cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
                                       label={({ percent }) => (percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : '')}
                                       labelLine={false}
@@ -2149,7 +2209,7 @@
                               <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>
-                                    <Pie data={pensionAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                    <Pie data={pensionAssets.map((a, i) => ({ name: a.name, value: toGBP(a.value, a.currency, plan), fill: PA_COLORS[i % 10] }))}
                                       cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
                                       label={({ percent }) => (percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : '')}
                                       labelLine={false}
@@ -2233,10 +2293,10 @@
                           <div className="text-xs muted mb-2">JISA balances are tracked separately — excluded from all combined totals and retirement projections.</div>
                           {(plan.jisaPortfolios || []).map((jisa) => {
                             const jAssets = jisa.assets || [];
-                            const jTotal = sum(jAssets.map((a) => Number(a.value || 0)));
+                            const jTotal = sum(jAssets.map((a) => toGBP(a.value, a.currency || 'GBP', plan)));
                             const jYearsToAccess = Math.max(0, jisa.accessAge - jisa.childAge);
                             const jProjections = jAssets.map((a) => {
-                              const vals = [Number(a.value || 0)];
+                              const vals = [toGBP(a.value, a.currency || 'GBP', plan)];
                               for (let y = 0; y < 10; y++) {
                                 const rate = Number((a.cagrByYear || [])[y] ?? 7) / 100;
                                 vals.push(vals[vals.length - 1] * (1 + rate));
@@ -2250,7 +2310,7 @@
                               return row;
                             });
                             const jValueAtAccess = (() => {
-                              let vals = jAssets.map((a) => Number(a.value || 0));
+                              let vals = jAssets.map((a) => toGBP(a.value, a.currency || 'GBP', plan));
                               for (let y = 0; y < jYearsToAccess; y++) {
                                 vals = vals.map((v, ai) => {
                                   const rate = Number((jAssets[ai].cagrByYear || [])[Math.min(y, 9)] ?? 7) / 100;
@@ -2276,7 +2336,7 @@
                                     <div className="h-52">
                                       <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
-                                          <Pie data={jAssets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                          <Pie data={jAssets.map((a, i) => ({ name: a.name, value: toGBP(a.value, a.currency || 'GBP', plan), fill: PA_COLORS[i % 10] }))}
                                             cx="50%" cy="50%" outerRadius={75} innerRadius={35} dataKey="value" paddingAngle={2}
                                             label={({ percent }) => percent > 0.05 ? (percent * 100).toFixed(0) + '%' : ''}
                                             labelLine={false}>
@@ -2328,7 +2388,7 @@
                                               <input className="field rounded px-2 py-1 text-sm w-24 text-right" type="number" value={a.value}
                                                 onChange={(e) => setPlan((prev) => ({ ...prev, jisaPortfolios: prev.jisaPortfolios.map((j) => j.id === jisa.id ? { ...j, assets: j.assets.map((x) => x.id === a.id ? { ...x, value: Number(e.target.value) } : x) } : j) }))} />
                                             </div>
-                                            <div className="text-xs muted">{jTotal > 0 ? ((Number(a.value || 0) / jTotal) * 100).toFixed(1) : 0}%</div>
+                                            <div className="text-xs muted">{jTotal > 0 ? ((toGBP(a.value, a.currency || 'GBP', plan) / jTotal) * 100).toFixed(1) : 0}%</div>
                                             <button className="text-xs muted hover:text-white px-2 py-1 rounded border" style={{ borderColor: 'var(--line)' }}
                                               onClick={() => setExpandedAsset(expandedAsset === expandedKey ? null : expandedKey)}>
                                               {expandedAsset === expandedKey ? '▲ CAGR/yr' : '▼ CAGR/yr'}
