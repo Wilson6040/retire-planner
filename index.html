@@ -263,6 +263,7 @@
         'Monte Carlo',
         'Withdrawals',
         'Scenarios',
+        'Assets & Liabilities',
         'Projections',
         'Tax',
         'Currency',
@@ -320,6 +321,18 @@
             { id: crypto.randomUUID(), name: 'Entertainment', monthly: 180 },
             { id: crypto.randomUUID(), name: 'Insurance', monthly: 240 },
             { id: crypto.randomUUID(), name: 'Misc', monthly: 250 },
+          ],
+        },
+        assetsLiabilities: {
+          physicalAssets: [
+            { id: crypto.randomUUID(), name: 'London Property', category: 'Property', value: 450000, notes: 'Primary residence / rental' },
+            { id: crypto.randomUUID(), name: 'Car', category: 'Vehicle', value: 15000, notes: '' },
+            { id: crypto.randomUUID(), name: 'Contents', category: 'Personal', value: 20000, notes: 'Home contents' },
+            { id: crypto.randomUUID(), name: 'Watches', category: 'Personal', value: 5000, notes: '' },
+            { id: crypto.randomUUID(), name: 'Bikes', category: 'Personal', value: 3000, notes: '' },
+          ],
+          liabilities: [
+            { id: crypto.randomUUID(), name: 'Mortgage', balance: 180000, monthlyPayment: 850, notes: 'London property' },
           ],
         },
         holdings: [
@@ -908,6 +921,213 @@
         }
         const sippAnnualTax = ukIncomeTax(sippAnnualTaxableIncome);
 
+        const physicalAssets = plan.assetsLiabilities?.physicalAssets || [];
+        const liabilities = plan.assetsLiabilities?.liabilities || [];
+        const totalFinancialAssets = React.useMemo(() => sum(plan.accounts, 'value'), [plan.accounts]);
+        const totalPhysicalAssets = React.useMemo(() => sum(physicalAssets, 'value'), [physicalAssets]);
+        const totalLiabilities = React.useMemo(() => sum(liabilities, 'balance'), [liabilities]);
+        const netWorth = totalFinancialAssets + totalPhysicalAssets - totalLiabilities;
+        const monthlyLiabilityPayments = React.useMemo(() => sum(liabilities, 'monthlyPayment'), [liabilities]);
+        const monthlyCashFlowAfterLiabilities = monthlyIncome - Number(plan.expenses.monthlyDrawdown || 0) - monthlyLiabilityPayments;
+        const physicalCategoryColors = {
+          Property: '#3b82f6',
+          Vehicle: '#f59e0b',
+          Personal: '#a855f7',
+          Other: '#6b7280',
+        };
+        const physicalAllocationData = React.useMemo(() => {
+          const grouped = { Property: 0, Vehicle: 0, Personal: 0, Other: 0 };
+          physicalAssets.forEach((a) => {
+            const cat = ['Property', 'Vehicle', 'Personal'].includes(a.category) ? a.category : 'Other';
+            grouped[cat] += Number(a.value || 0);
+          });
+          return Object.entries(grouped)
+            .filter(([, value]) => value > 0)
+            .map(([name, value]) => ({ name, value }));
+        }, [physicalAssets]);
+
+        const currentAge = Number(plan.people.stuart.age || 46);
+        const inflationRate = Number(plan.assumptions.inflation || 0) / 100;
+        const realGrowth = (7 - Number(plan.assumptions.inflation || 0)) / 100;
+        const baseAnnualDrawdown = Number(plan.expenses.monthlyDrawdown || 0) * 12;
+        const isaStartValue = sum(plan.accounts.filter((a) => a.type === 'ISA'), 'value');
+        const sippStartValue = sum(plan.accounts.filter((a) => a.type === 'SIPP'), 'value');
+
+        const isaPhaseData = React.useMemo(() => {
+          const rows = [];
+          let isaBalance = Number(isaStartValue || 0);
+          for (let age = 46; age <= 57; age += 1) {
+            const yearsFromNow = age - currentAge;
+            const inflationAdjustedExpense = baseAnnualDrawdown * Math.pow(1 + inflationRate, Math.max(0, yearsFromNow));
+            const rentalIncome = sum(
+              plan.incomeStreams
+                .filter((s) => s.name.toLowerCase().includes('rental') && age >= Number(s.startAge) && age <= Number(s.endAge))
+                .map((s) => Number(s.monthly || 0) * 12)
+            );
+            const netDraw = Math.max(0, inflationAdjustedExpense - rentalIncome);
+            isaBalance = age === 46 ? isaBalance : Math.max(0, isaBalance * (1 + realGrowth) - netDraw);
+            rows.push({
+              age,
+              isaBalance,
+              netDraw,
+              inflationAdjustedExpense,
+            });
+          }
+          return rows;
+        }, [isaStartValue, currentAge, baseAnnualDrawdown, inflationRate, plan.incomeStreams, realGrowth]);
+
+        function grossFromNetRequired(netAmount) {
+          if (netAmount <= 0) return 0;
+          let low = netAmount;
+          let high = netAmount * 2 + 50000;
+          for (let i = 0; i < 30; i += 1) {
+            const mid = (low + high) / 2;
+            const net = mid - ukIncomeTax(mid);
+            if (net >= netAmount) high = mid;
+            else low = mid;
+          }
+          return high;
+        }
+
+        const sippPhaseData = React.useMemo(() => {
+          const yearsTo57 = Math.max(0, 57 - currentAge);
+          const sippAt57 = Number(sippStartValue || 0) * Math.pow(1 + realGrowth, yearsTo57);
+          const pcls = sippAt57 * 0.25;
+          let isaBalance = Number(isaPhaseData[isaPhaseData.length - 1]?.isaBalance || 0);
+          let sippBalance = sippAt57 * 0.75;
+          const rows = [];
+
+          for (let age = 57; age <= Number(plan.people.lifeExpectancy || 90); age += 1) {
+            if (age > 57) {
+              isaBalance = Math.max(0, isaBalance * (1 + realGrowth));
+              sippBalance = Math.max(0, sippBalance * (1 + realGrowth));
+            }
+            const yearsFromNow = age - currentAge;
+            const annualExpense = baseAnnualDrawdown * Math.pow(1 + inflationRate, Math.max(0, yearsFromNow));
+            const annualIncome = sum(
+              plan.incomeStreams
+                .filter((s) => age >= Number(s.startAge) && age <= Number(s.endAge))
+                .map((s) => Number(s.monthly || 0) * 12)
+            );
+            const netNeed = Math.max(0, annualExpense - annualIncome);
+            const totalBalance = isaBalance + sippBalance;
+            const isaTargetDraw = totalBalance > 0 ? netNeed * (isaBalance / totalBalance) : 0;
+            const isaDraw = Math.min(isaBalance, isaTargetDraw);
+            isaBalance -= isaDraw;
+
+            const remainingNeed = Math.max(0, netNeed - isaDraw);
+            const sippGrossNeeded = grossFromNetRequired(remainingNeed);
+            const sippDraw = Math.min(sippBalance, sippGrossNeeded);
+            sippBalance -= sippDraw;
+            const sippNet = Math.max(0, sippDraw - ukIncomeTax(sippDraw));
+
+            const uncovered = Math.max(0, remainingNeed - sippNet);
+            if (uncovered > 0 && isaBalance > 0) {
+              const isaTopUp = Math.min(isaBalance, uncovered);
+              isaBalance -= isaTopUp;
+            }
+
+            rows.push({
+              age,
+              isaBalance,
+              sippBalance,
+              annualExpense,
+              annualIncome,
+            });
+          }
+
+          return {
+            rows,
+            pcls,
+            sippAt57,
+          };
+        }, [currentAge, sippStartValue, realGrowth, isaPhaseData, plan.people.lifeExpectancy, baseAnnualDrawdown, inflationRate, plan.incomeStreams]);
+
+        function updatePhysicalAsset(id, field, value) {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                physicalAssets: current.physicalAssets.map((a) => (a.id === id ? { ...a, [field]: value } : a)),
+              },
+            };
+          });
+        }
+
+        function addPhysicalAsset() {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            if ((current.physicalAssets || []).length >= 20) return prev;
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                physicalAssets: [
+                  ...(current.physicalAssets || []),
+                  { id: crypto.randomUUID(), name: 'New Asset', category: 'Other', value: 0, notes: '' },
+                ],
+              },
+            };
+          });
+        }
+
+        function removePhysicalAsset(id) {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                physicalAssets: (current.physicalAssets || []).filter((a) => a.id !== id),
+              },
+            };
+          });
+        }
+
+        function updateLiability(id, field, value) {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                liabilities: (current.liabilities || []).map((l) => (l.id === id ? { ...l, [field]: value } : l)),
+              },
+            };
+          });
+        }
+
+        function addLiability() {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                liabilities: [
+                  ...(current.liabilities || []),
+                  { id: crypto.randomUUID(), name: 'New Liability', balance: 0, monthlyPayment: 0, notes: '' },
+                ],
+              },
+            };
+          });
+        }
+
+        function removeLiability(id) {
+          setPlan((prev) => {
+            const current = prev.assetsLiabilities || { physicalAssets: [], liabilities: [] };
+            return {
+              ...prev,
+              assetsLiabilities: {
+                ...current,
+                liabilities: (current.liabilities || []).filter((l) => l.id !== id),
+              },
+            };
+          });
+        }
+
         return (
           <div className="min-h-screen p-4 md:p-6 text-sm">
             <div className="max-w-7xl mx-auto space-y-4">
@@ -1136,6 +1356,82 @@
 
               {activeTab === 'Scenarios' && (
                 <div className="space-y-4">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="panel rounded-xl p-4 space-y-3">
+                      <div>
+                        <div className="font-semibold">ISA Phase (Now → 57)</div>
+                        <div className="muted text-xs">Draws from ISA only. SIPP untouched. Rental income covers partial expenses.</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">ISA start value</div>
+                          <div className="font-semibold">{displayMoney(isaStartValue)}</div>
+                        </div>
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">Current age</div>
+                          <div className="font-semibold">{currentAge}</div>
+                        </div>
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">Monthly drawdown</div>
+                          <div className="font-semibold">{displayMoney(plan.expenses.monthlyDrawdown)}</div>
+                        </div>
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">Inflation-adjusted expenses @57</div>
+                          <div className="font-semibold">{displayMoney((isaPhaseData[isaPhaseData.length - 1]?.inflationAdjustedExpense || 0) / 12)}/mo</div>
+                        </div>
+                      </div>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={isaPhaseData}>
+                            <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                            <XAxis dataKey="age" />
+                            <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                            <Tooltip formatter={(v) => displayMoney(v)} />
+                            <Line type="monotone" dataKey="isaBalance" name="ISA Balance" stroke="#22c55e" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)' }}>
+                        <div className="text-sm">Projected ISA remaining at age 57</div>
+                        <div className="font-semibold text-positive">{displayMoney(isaPhaseData[isaPhaseData.length - 1]?.isaBalance || 0)}</div>
+                      </div>
+                    </div>
+
+                    <div className="panel rounded-xl p-4 space-y-3">
+                      <div>
+                        <div className="font-semibold">SIPP Phase (57+) — incl. 25% PCLS</div>
+                        <div className="muted text-xs">At age 57, take 25% tax-free lump sum from SIPP. Remaining 75% taxed as income on drawdown.</div>
+                      </div>
+                      <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)' }}>
+                        <div className="text-sm font-medium">PCLS (25% tax-free)</div>
+                        <div className="text-lg font-bold text-positive">{displayMoney(sippPhaseData.pcls)}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">SIPP at 57</div>
+                          <div className="font-semibold">{displayMoney(sippPhaseData.sippAt57)}</div>
+                        </div>
+                        <div className="rounded-lg p-3" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                          <div className="muted">Taxable SIPP start (75%)</div>
+                          <div className="font-semibold">{displayMoney(sippPhaseData.sippAt57 * 0.75)}</div>
+                        </div>
+                      </div>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={sippPhaseData.rows}>
+                            <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                            <XAxis dataKey="age" />
+                            <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                            <Tooltip formatter={(v) => displayMoney(v)} />
+                            <Legend />
+                            <Line type="monotone" dataKey="isaBalance" name="ISA Remaining" stroke="#22c55e" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="sippBalance" name="SIPP Remaining" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     {scenarioSet.map((s) => (
                       <div key={s.id} className="panel rounded-xl p-4 space-y-2">
@@ -1178,6 +1474,155 @@
                         <Bar yAxisId="right" dataKey="runway" name="Runway Age" fill="#f59e0b" />
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Assets & Liabilities' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Total Financial Assets</div>
+                      <div className="text-xl font-semibold">{displayMoney(totalFinancialAssets)}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Total Physical Assets</div>
+                      <div className="text-xl font-semibold">{displayMoney(totalPhysicalAssets)}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Total Liabilities</div>
+                      <div className="text-xl font-semibold">{displayMoney(totalLiabilities)}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Net Worth</div>
+                      <div className={`text-xl font-semibold ${netWorth >= 0 ? 'text-positive' : 'text-negative'}`}>{displayMoney(netWorth)}</div>
+                    </div>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="font-medium">Physical Assets</div>
+                      <div className="text-xs muted">{physicalAssets.length}/20</div>
+                    </div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="text-left p-2">Name</th>
+                          <th className="text-left p-2">Category</th>
+                          <th className="text-right p-2">Value (£)</th>
+                          <th className="text-left p-2">Notes</th>
+                          <th className="text-right p-2">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {physicalAssets.map((a) => {
+                          const category = ['Property', 'Vehicle', 'Personal'].includes(a.category) ? a.category : 'Other';
+                          return (
+                            <tr key={a.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                              <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={a.name} onChange={(e) => updatePhysicalAsset(a.id, 'name', e.target.value)} /></td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-2">
+                                  <select className="select rounded px-2 py-1" value={category} onChange={(e) => updatePhysicalAsset(a.id, 'category', e.target.value)}>
+                                    <option value="Property">Property</option>
+                                    <option value="Vehicle">Vehicle</option>
+                                    <option value="Personal">Personal</option>
+                                    <option value="Other">Other</option>
+                                  </select>
+                                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: physicalCategoryColors[category] + '22', border: `1px solid ${physicalCategoryColors[category]}55`, color: physicalCategoryColors[category] }}>{category}</span>
+                                </div>
+                              </td>
+                              <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={a.value} onChange={(e) => updatePhysicalAsset(a.id, 'value', Number(e.target.value))} /></td>
+                              <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={a.notes || ''} onChange={(e) => updatePhysicalAsset(a.id, 'notes', e.target.value)} /></td>
+                              <td className="p-2 text-right"><button className="text-negative px-2 py-1 rounded hover:opacity-80" onClick={() => removePhysicalAsset(a.id)}>✕</button></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="mt-3">
+                      <button className="btn px-3 py-2 rounded text-sm disabled:opacity-50" onClick={addPhysicalAsset} disabled={physicalAssets.length >= 20}>+ Add Asset</button>
+                    </div>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-3">Liabilities</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="text-left p-2">Name</th>
+                          <th className="text-right p-2">Outstanding Balance (£)</th>
+                          <th className="text-right p-2">Monthly Payment (£)</th>
+                          <th className="text-right p-2">Annual Cost (£)</th>
+                          <th className="text-left p-2">Notes</th>
+                          <th className="text-right p-2">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {liabilities.map((l) => (
+                          <tr key={l.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={l.name} onChange={(e) => updateLiability(l.id, 'name', e.target.value)} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={l.balance} onChange={(e) => updateLiability(l.id, 'balance', Number(e.target.value))} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={l.monthlyPayment} onChange={(e) => updateLiability(l.id, 'monthlyPayment', Number(e.target.value))} /></td>
+                            <td className="p-2 text-right">{displayMoney(Number(l.monthlyPayment || 0) * 12)}</td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={l.notes || ''} onChange={(e) => updateLiability(l.id, 'notes', e.target.value)} /></td>
+                            <td className="p-2 text-right"><button className="text-negative px-2 py-1 rounded hover:opacity-80" onClick={() => removeLiability(l.id)}>✕</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="mt-3">
+                      <button className="btn px-3 py-2 rounded text-sm" onClick={addLiability}>+ Add Liability</button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="panel rounded-xl p-4 h-80">
+                      <div className="font-medium mb-3">Asset Allocation (Physical Assets)</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <PieChart>
+                          <Pie
+                            data={physicalAllocationData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={95}
+                            dataKey="value"
+                            label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                            labelLine={false}
+                          >
+                            {physicalAllocationData.map((entry) => (
+                              <Cell key={entry.name} fill={physicalCategoryColors[entry.name] || physicalCategoryColors.Other} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(v) => displayMoney(v)} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="panel rounded-xl p-4">
+                      <div className="font-medium mb-3">Monthly Cash Flow Summary</div>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="py-2 muted">Monthly income</td>
+                            <td className="py-2 text-right">{displayMoney(monthlyIncome)}</td>
+                          </tr>
+                          <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="py-2 muted">Monthly drawdown target</td>
+                            <td className="py-2 text-right">{displayMoney(plan.expenses.monthlyDrawdown)}</td>
+                          </tr>
+                          <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="py-2 muted">Monthly liability payments</td>
+                            <td className="py-2 text-right">{displayMoney(monthlyLiabilityPayments)}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 font-semibold">Monthly surplus / deficit</td>
+                            <td className={`py-2 text-right font-semibold ${monthlyCashFlowAfterLiabilities >= 0 ? 'text-positive' : 'text-negative'}`}>{displayMoney(monthlyCashFlowAfterLiabilities)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
