@@ -1,0 +1,1466 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Retirement Planning Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              terminalBg: '#0a0f1e',
+              positive: '#22c55e',
+              negative: '#ef4444',
+              amberish: '#f59e0b',
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        --bg: #0a0f1e;
+        --panel: #11172a;
+        --panel-2: #17213b;
+        --text: #ffffff;
+        --muted: #9fb0d0;
+        --line: #253150;
+      }
+      [data-theme='light'] {
+        --bg: #f2f5fb;
+        --panel: #ffffff;
+        --panel-2: #edf2fb;
+        --text: #0b1328;
+        --muted: #475a84;
+        --line: #d5def2;
+      }
+      body {
+        background: radial-gradient(circle at top right, #17213b 0%, var(--bg) 42%);
+        color: var(--text);
+        min-height: 100vh;
+      }
+      [data-theme='light'] body {
+        background: linear-gradient(180deg, #f9fbff 0%, #e9f0fb 100%);
+      }
+      .panel {
+        background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+        border: 1px solid var(--line);
+      }
+      .field,
+      .btn,
+      .select,
+      .textarea {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .timeline-line {
+        background: linear-gradient(90deg, #22c55e 0%, #f59e0b 50%, #ef4444 100%);
+      }
+      @media print {
+        .no-print {
+          display: none !important;
+        }
+        .print-break {
+          page-break-before: always;
+        }
+        body {
+          background: #fff !important;
+          color: #000 !important;
+        }
+        .panel {
+          border: 1px solid #bbb;
+          background: #fff;
+        }
+      }
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts@2.13.3/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const {
+        LineChart,
+        Line,
+        XAxis,
+        YAxis,
+        CartesianGrid,
+        Tooltip,
+        Legend,
+        ResponsiveContainer,
+        AreaChart,
+        Area,
+        BarChart,
+        Bar,
+        PieChart,
+        Pie,
+        Cell,
+        ComposedChart,
+      } = Recharts;
+
+      const TABS = [
+        'Dashboard',
+        'Monte Carlo',
+        'Withdrawals',
+        'Scenarios',
+        'Projections',
+        'Tax',
+        'Currency',
+        'Portfolio',
+        'Milestones',
+        'Settings',
+      ];
+
+      const CURRENT_YEAR = new Date().getFullYear();
+      const CURRENCY = {
+        GBP: 'GBP',
+        ZAR: 'ZAR',
+        BOTH: 'BOTH',
+      };
+
+      const defaultPlan = {
+        people: {
+          stuart: { name: 'Stuart Wilson', age: 46, retirementDate: '2026-06-01', statePensionAge: 67 },
+          nova: { name: 'Nova', age: 45, statePensionAge: 67 },
+          retirementLocation: 'South Africa',
+          lifeExpectancy: 90,
+        },
+        assumptions: {
+          expectedReturn: 7,
+          inflation: 5,
+          volatility: 14,
+          saInflation: 5,
+          yearsToSimulate: 44,
+        },
+        accounts: [
+          { id: crypto.randomUUID(), name: 'ISA (Hargreaves Lansdown)', value: 285000, type: 'ISA', accessibleAge: 46 },
+          { id: crypto.randomUUID(), name: 'SIPP Pension', value: 220000, type: 'SIPP', accessibleAge: 57 },
+          { id: crypto.randomUUID(), name: 'AJ Bell Account', value: 95000, type: 'GIA', accessibleAge: 46 },
+          { id: crypto.randomUUID(), name: 'Coinbase', value: 22000, type: 'Crypto', accessibleAge: 46 },
+          { id: crypto.randomUUID(), name: 'SwissBorg', value: 14000, type: 'Crypto', accessibleAge: 46 },
+          { id: crypto.randomUUID(), name: 'Binance', value: 19000, type: 'Crypto', accessibleAge: 46 },
+          { id: crypto.randomUUID(), name: 'Phantom (Solana)', value: 17000, type: 'Crypto', accessibleAge: 46 },
+        ],
+        incomeStreams: [
+          { id: crypto.randomUUID(), name: 'London rental property', monthly: 965, startAge: 46, endAge: 90, taxable: true },
+          { id: crypto.randomUUID(), name: 'UK State Pension Stuart', monthly: 1100, startAge: 67, endAge: 90, taxable: true },
+          { id: crypto.randomUUID(), name: 'UK State Pension Nova', monthly: 1100, startAge: 67, endAge: 90, taxable: true },
+          { id: crypto.randomUUID(), name: 'Freelance', monthly: 0, startAge: 46, endAge: 90, taxable: true },
+          { id: crypto.randomUUID(), name: 'Dividends', monthly: 0, startAge: 46, endAge: 90, taxable: true },
+        ],
+        expenses: {
+          monthlyDrawdown: 4035,
+          oneOffs: [{ id: crypto.randomUUID(), name: 'SA move', amount: 10000, date: '2026-10-01' }],
+          categories: [
+            { id: crypto.randomUUID(), name: 'Housing', monthly: 900 },
+            { id: crypto.randomUUID(), name: 'Food', monthly: 500 },
+            { id: crypto.randomUUID(), name: 'Transport', monthly: 240 },
+            { id: crypto.randomUUID(), name: 'Education', monthly: 120 },
+            { id: crypto.randomUUID(), name: 'Medical', monthly: 200 },
+            { id: crypto.randomUUID(), name: 'Entertainment', monthly: 180 },
+            { id: crypto.randomUUID(), name: 'Insurance', monthly: 240 },
+            { id: crypto.randomUUID(), name: 'Misc', monthly: 250 },
+          ],
+        },
+        holdings: [
+          { id: crypto.randomUUID(), name: 'GGP', quantity: 120000, avgBuy: 0.14, current: 0.22, cagr: 10 },
+          { id: crypto.randomUUID(), name: 'TSLA', quantity: 120, avgBuy: 165, current: 212, cagr: 9 },
+        ],
+        allocation: [
+          { id: crypto.randomUUID(), name: 'Equities', percent: 58 },
+          { id: crypto.randomUUID(), name: 'Cash', percent: 12 },
+          { id: crypto.randomUUID(), name: 'Crypto', percent: 20 },
+          { id: crypto.randomUUID(), name: 'Bonds', percent: 10 },
+        ],
+        hypotheticals: [
+          { id: crypto.randomUUID(), name: 'Bitcoin', startValue: 15000, cagr: 20, enabled: false },
+          { id: crypto.randomUUID(), name: 'Gold', startValue: 10000, cagr: 6, enabled: false },
+          { id: crypto.randomUUID(), name: 'GGP Bull Case', startValue: 8000, cagr: 25, enabled: false },
+          { id: crypto.randomUUID(), name: 'S&P 500 ETF', startValue: 12000, cagr: 9, enabled: false },
+          { id: crypto.randomUUID(), name: 'SA Property', startValue: 20000, cagr: 8, enabled: false },
+        ],
+        currency: {
+          gbpZar: 23.5,
+          display: CURRENCY.GBP,
+          scenario: 'base',
+        },
+        tax: {
+          nrl1iEnabled: false,
+          selfAssessmentReminder: true,
+          saTaxResident: true,
+          ukCgtAllowance: 3000,
+        },
+        milestones: {
+          alerts: [
+            'File NRL1i before leaving UK',
+            'Review SIPP drawdown strategy at 55',
+            'CGT review before selling GGP',
+          ],
+        },
+      };
+
+      const defaultScenarioSet = [
+        {
+          id: crypto.randomUUID(),
+          name: 'Base Case',
+          returnAdj: 0,
+          expenseAdjPct: 0,
+          extraAssetDelta: 0,
+          lumpSumAge: '',
+          lumpSumAmount: 0,
+          saInflationAdj: 0,
+        },
+        {
+          id: crypto.randomUUID(),
+          name: 'GGP hits £2',
+          returnAdj: 1.2,
+          expenseAdjPct: 0,
+          extraAssetDelta: 213600,
+          lumpSumAge: '',
+          lumpSumAmount: 0,
+          saInflationAdj: 0,
+        },
+        {
+          id: crypto.randomUUID(),
+          name: 'Sell London property at 55',
+          returnAdj: 0,
+          expenseAdjPct: -5,
+          extraAssetDelta: 0,
+          lumpSumAge: 55,
+          lumpSumAmount: 250000,
+          saInflationAdj: 0,
+        },
+        {
+          id: crypto.randomUUID(),
+          name: 'Return to UK at 50',
+          returnAdj: 0,
+          expenseAdjPct: 4,
+          extraAssetDelta: 0,
+          lumpSumAge: '',
+          lumpSumAmount: 0,
+          saInflationAdj: -2,
+        },
+      ];
+
+      function usePersistentState(key, initialValue) {
+        const [value, setValue] = React.useState(() => {
+          try {
+            const stored = localStorage.getItem(key);
+            return stored ? JSON.parse(stored) : initialValue;
+          } catch {
+            return initialValue;
+          }
+        });
+
+        React.useEffect(() => {
+          localStorage.setItem(key, JSON.stringify(value));
+        }, [key, value]);
+
+        return [value, setValue];
+      }
+
+      function sum(arr, key) {
+        return arr.reduce((acc, x) => acc + (key ? Number(x[key] || 0) : Number(x || 0)), 0);
+      }
+
+      function quantile(sorted, q) {
+        if (!sorted.length) return 0;
+        const pos = (sorted.length - 1) * q;
+        const base = Math.floor(pos);
+        const rest = pos - base;
+        if (sorted[base + 1] !== undefined) {
+          return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+        }
+        return sorted[base];
+      }
+
+      function normalRandom(mean = 0, stdDev = 1) {
+        let u = 0,
+          v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        return mean + z * stdDev;
+      }
+
+      function fmtMoney(value, currency = 'GBP', digits = 0) {
+        return new Intl.NumberFormat('en-GB', {
+          style: 'currency',
+          currency,
+          maximumFractionDigits: digits,
+        }).format(Number(value || 0));
+      }
+
+      function startPortfolio(plan, scenario) {
+        return sum(plan.accounts, 'value') + sum(plan.hypotheticals.filter((h) => h.enabled), 'startValue') + Number(scenario?.extraAssetDelta || 0);
+      }
+
+      function ageToYear(currentAge, targetAge) {
+        return CURRENT_YEAR + (targetAge - currentAge);
+      }
+
+      function getOneOffByYear(plan) {
+        return plan.expenses.oneOffs.reduce((acc, x) => {
+          const y = new Date(x.date).getFullYear();
+          acc[y] = (acc[y] || 0) + Number(x.amount || 0);
+          return acc;
+        }, {});
+      }
+
+      function buildProjectionRows(plan, scenario = defaultScenarioSet[0]) {
+        const currentAge = Number(plan.people.stuart.age);
+        const maxAge = Number(plan.people.lifeExpectancy);
+        const expectedReturn = (Number(plan.assumptions.expectedReturn) + Number(scenario.returnAdj || 0)) / 100;
+        const inflation = (Number(plan.assumptions.inflation) + Number(scenario.saInflationAdj || 0)) / 100;
+        const oneOffByYear = getOneOffByYear(plan);
+        const baseDrawdownAnnual = Number(plan.expenses.monthlyDrawdown) * 12 * (1 + Number(scenario.expenseAdjPct || 0) / 100);
+        const baseCategoryAnnual = sum(plan.expenses.categories, 'monthly') * 12 * (1 + Number(scenario.expenseAdjPct || 0) / 100);
+
+        let portfolio = startPortfolio(plan, scenario);
+        const rows = [];
+        for (let age = currentAge; age <= maxAge; age += 1) {
+          const year = ageToYear(currentAge, age);
+          const yearsFromNow = age - currentAge;
+          const inflationFactor = Math.pow(1 + inflation, yearsFromNow);
+          const incomeMap = {};
+          let income = 0;
+          plan.incomeStreams.forEach((s) => {
+            const active = age >= Number(s.startAge) && age <= Number(s.endAge);
+            const annual = active ? Number(s.monthly) * 12 : 0;
+            incomeMap[s.name] = annual;
+            income += annual;
+          });
+
+          if (scenario.lumpSumAge && Number(scenario.lumpSumAge) === age) {
+            income += Number(scenario.lumpSumAmount || 0);
+            incomeMap['Scenario Lump Sum'] = Number(scenario.lumpSumAmount || 0);
+          }
+
+          const annualExpense = (baseDrawdownAnnual + baseCategoryAnnual) * inflationFactor + Number(oneOffByYear[year] || 0);
+          const start = portfolio;
+          portfolio = Math.max(0, portfolio * (1 + expectedReturn) + income - annualExpense);
+          const drawdown = Math.max(0, annualExpense - income);
+          const drawdownRate = start > 0 ? (drawdown / start) * 100 : 0;
+
+          rows.push({
+            age,
+            year,
+            income,
+            annualExpense,
+            net: income - annualExpense,
+            portfolio,
+            drawdownRate,
+            ...incomeMap,
+          });
+        }
+        return rows;
+      }
+
+      function runwayAge(rows, lifeExpectancy) {
+        const broke = rows.find((r) => r.portfolio <= 0.01);
+        return broke ? broke.age : lifeExpectancy;
+      }
+
+      function runwayColor(age) {
+        if (age >= 90) return 'text-positive';
+        if (age >= 85) return 'text-amberish';
+        return 'text-negative';
+      }
+
+      function monteCarlo(plan, scenario, simulations = 1000) {
+        const currentAge = Number(plan.people.stuart.age);
+        const maxAge = Number(plan.people.lifeExpectancy);
+        const years = Math.max(1, Math.min(Number(plan.assumptions.yearsToSimulate || 1), maxAge - currentAge + 1));
+        const inflation = (Number(plan.assumptions.inflation) + Number(scenario.saInflationAdj || 0)) / 100;
+        const mean = (Number(plan.assumptions.expectedReturn) + Number(scenario.returnAdj || 0)) / 100;
+        const std = Number(plan.assumptions.volatility) / 100;
+        const baseDrawdownAnnual = Number(plan.expenses.monthlyDrawdown) * 12 * (1 + Number(scenario.expenseAdjPct || 0) / 100);
+        const baseCategoryAnnual = sum(plan.expenses.categories, 'monthly') * 12 * (1 + Number(scenario.expenseAdjPct || 0) / 100);
+        const oneOffByYear = getOneOffByYear(plan);
+        const trajectories = Array.from({ length: years }, () => []);
+        let success = 0;
+
+        for (let s = 0; s < simulations; s += 1) {
+          let portfolio = startPortfolio(plan, scenario);
+          for (let idx = 0; idx < years; idx += 1) {
+            const age = currentAge + idx;
+            const year = ageToYear(currentAge, age);
+            let income = 0;
+            plan.incomeStreams.forEach((stream) => {
+              if (age >= Number(stream.startAge) && age <= Number(stream.endAge)) income += Number(stream.monthly) * 12;
+            });
+            if (scenario.lumpSumAge && Number(scenario.lumpSumAge) === age) income += Number(scenario.lumpSumAmount || 0);
+
+            const expense = (baseDrawdownAnnual + baseCategoryAnnual) * Math.pow(1 + inflation, idx) + Number(oneOffByYear[year] || 0);
+            const annualReturn = normalRandom(mean, std);
+            portfolio = Math.max(0, portfolio * (1 + annualReturn) + income - expense);
+            trajectories[idx].push(portfolio);
+          }
+          if (portfolio > 0) success += 1;
+        }
+
+        const fan = trajectories.map((arr, idx) => {
+          const sorted = [...arr].sort((a, b) => a - b);
+          return {
+            age: currentAge + idx,
+            p10: quantile(sorted, 0.1),
+            p25: quantile(sorted, 0.25),
+            p50: quantile(sorted, 0.5),
+            p75: quantile(sorted, 0.75),
+            p90: quantile(sorted, 0.9),
+          };
+        });
+
+        return {
+          successProbability: (success / simulations) * 100,
+          fan,
+        };
+      }
+
+      function taxFromSABands(annualTaxableGBP, gbpZar) {
+        const taxableZar = annualTaxableGBP * gbpZar;
+        const bands = [
+          { max: 237100, rate: 0.18 },
+          { max: 370500, rate: 0.26 },
+          { max: 512800, rate: 0.31 },
+          { max: 673000, rate: 0.36 },
+          { max: 857900, rate: 0.39 },
+          { max: 1817000, rate: 0.41 },
+          { max: Infinity, rate: 0.45 },
+        ];
+        let remaining = taxableZar;
+        let prev = 0;
+        let tax = 0;
+        for (const b of bands) {
+          const chunk = Math.min(remaining, b.max - prev);
+          if (chunk <= 0) break;
+          tax += chunk * b.rate;
+          remaining -= chunk;
+          prev = b.max;
+        }
+        return { taxableZar, taxZar: Math.max(0, tax), taxGBP: Math.max(0, tax / gbpZar) };
+      }
+
+      function App() {
+        const [plan, setPlan] = usePersistentState('retire-plan-v1', defaultPlan);
+        const [activeTab, setActiveTab] = usePersistentState('retire-tab-v1', 'Dashboard');
+        const [theme, setTheme] = usePersistentState('retire-theme-v1', 'dark');
+        const [scenarioSet, setScenarioSet] = usePersistentState('retire-scenarios-v1', defaultScenarioSet);
+        const [savedPlans, setSavedPlans] = usePersistentState('retire-snapshots-v1', {});
+        const [newSaveName, setNewSaveName] = React.useState('');
+
+        React.useEffect(() => {
+          document.documentElement.setAttribute('data-theme', theme);
+        }, [theme]);
+
+        const projectionRows = React.useMemo(() => buildProjectionRows(plan, scenarioSet[0]), [plan, scenarioSet]);
+        const totalAssets = React.useMemo(() => startPortfolio(plan, scenarioSet[0]), [plan, scenarioSet]);
+        const monthlyIncome = React.useMemo(() => sum(plan.incomeStreams, 'monthly'), [plan]);
+        const monthlyExpenses = React.useMemo(() => Number(plan.expenses.monthlyDrawdown) + sum(plan.expenses.categories, 'monthly'), [plan]);
+        const monthlySurplus = monthlyIncome - monthlyExpenses;
+        const runway = runwayAge(projectionRows, Number(plan.people.lifeExpectancy));
+        const yearsToPension = Number(plan.people.stuart.statePensionAge) - Number(plan.people.stuart.age);
+        const mcBase = React.useMemo(() => monteCarlo(plan, scenarioSet[0], 1000), [plan, scenarioSet]);
+
+        const holdingsValue = React.useMemo(
+          () => plan.holdings.map((h) => ({ ...h, currentValue: Number(h.quantity) * Number(h.current), gain: (Number(h.current) - Number(h.avgBuy)) * Number(h.quantity) })),
+          [plan.holdings]
+        );
+
+        const scenarioMetrics = React.useMemo(
+          () =>
+            scenarioSet.map((s) => {
+              const rows = buildProjectionRows(plan, s);
+              const mc = monteCarlo(plan, s, 600);
+              return {
+                name: s.name,
+                runway: runwayAge(rows, Number(plan.people.lifeExpectancy)),
+                success: mc.successProbability,
+              };
+            }),
+          [plan, scenarioSet]
+        );
+
+        const withdrawalSchedule = React.useMemo(() => {
+          const currentAge = Number(plan.people.stuart.age);
+          const maxAge = Number(plan.people.lifeExpectancy);
+          const expectedReturn = Number(plan.assumptions.expectedReturn) / 100;
+          const accounts = plan.accounts.map((a) => ({ ...a, remaining: Number(a.value) }));
+          const rows = [];
+
+          for (let age = currentAge; age <= maxAge; age += 1) {
+            const year = ageToYear(currentAge, age);
+            accounts.forEach((a) => {
+              a.remaining *= 1 + expectedReturn;
+            });
+            const income = sum(
+              plan.incomeStreams.filter((i) => age >= Number(i.startAge) && age <= Number(i.endAge)).map((i) => Number(i.monthly) * 12)
+            );
+            const expenses = (Number(plan.expenses.monthlyDrawdown) + sum(plan.expenses.categories, 'monthly')) * 12 * Math.pow(1 + Number(plan.assumptions.inflation) / 100, age - currentAge);
+            let need = Math.max(0, expenses - income);
+
+            const order = age < 57 ? ['ISA', 'GIA', 'Crypto', 'SIPP'] : ['SIPP', 'ISA', 'GIA', 'Crypto'];
+            const eligible = accounts
+              .filter((a) => age >= Number(a.accessibleAge))
+              .sort((a, b) => {
+                const ia = order.indexOf(a.type);
+                const ib = order.indexOf(b.type);
+                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+              });
+
+            if (need <= 0) {
+              rows.push({ age, year, source: 'No drawdown', amount: 0, remaining: sum(accounts, 'remaining') });
+              continue;
+            }
+
+            for (const acc of eligible) {
+              if (need <= 0) break;
+              if (acc.remaining <= 0) continue;
+              const draw = Math.min(acc.remaining, need);
+              acc.remaining -= draw;
+              need -= draw;
+              rows.push({ age, year, source: acc.name, amount: draw, remaining: acc.remaining });
+            }
+            if (need > 0) {
+              rows.push({ age, year, source: 'Funding Gap', amount: need, remaining: 0 });
+            }
+          }
+          return rows;
+        }, [plan]);
+
+        const currencyRate = React.useMemo(() => {
+          const base = Number(plan.currency.gbpZar);
+          if (plan.currency.scenario === 'weak') return base * 1.2;
+          if (plan.currency.scenario === 'strong') return base * 0.8;
+          return base;
+        }, [plan.currency]);
+
+        function displayMoney(gbp) {
+          if (plan.currency.display === CURRENCY.GBP) return fmtMoney(gbp, 'GBP');
+          if (plan.currency.display === CURRENCY.ZAR) return fmtMoney(gbp * currencyRate, 'ZAR');
+          return `${fmtMoney(gbp, 'GBP')} / ${fmtMoney(gbp * currencyRate, 'ZAR')}`;
+        }
+
+        function updatePlan(path, value) {
+          setPlan((prev) => {
+            const next = structuredClone(prev);
+            let ref = next;
+            for (let i = 0; i < path.length - 1; i += 1) ref = ref[path[i]];
+            ref[path[path.length - 1]] = value;
+            return next;
+          });
+        }
+
+        function updateRow(listKey, id, field, value) {
+          setPlan((prev) => ({
+            ...prev,
+            [listKey]: prev[listKey].map((x) => (x.id === id ? { ...x, [field]: value } : x)),
+          }));
+        }
+
+        function exportJson() {
+          const blob = new Blob([JSON.stringify({ plan, scenarioSet, savedPlans }, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'retirement-plan-export.json';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+
+        function importJson(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            try {
+              const parsed = JSON.parse(evt.target.result);
+              if (parsed.plan) setPlan(parsed.plan);
+              if (parsed.scenarioSet) setScenarioSet(parsed.scenarioSet);
+              if (parsed.savedPlans) setSavedPlans(parsed.savedPlans);
+              alert('Import successful');
+            } catch {
+              alert('Invalid JSON import');
+            }
+          };
+          reader.readAsText(file);
+        }
+
+        function saveNamedScenario() {
+          if (!newSaveName.trim()) return;
+          setSavedPlans((prev) => ({ ...prev, [newSaveName.trim()]: { plan, scenarioSet, savedAt: new Date().toISOString() } }));
+          setNewSaveName('');
+        }
+
+        function loadNamedScenario(name) {
+          const item = savedPlans[name];
+          if (!item) return;
+          setPlan(item.plan);
+          setScenarioSet(item.scenarioSet || defaultScenarioSet);
+        }
+
+        const milestoneData = React.useMemo(() => {
+          const sBirth = CURRENT_YEAR - Number(plan.people.stuart.age);
+          const nBirth = CURRENT_YEAR - Number(plan.people.nova.age);
+          return [
+            { name: 'Retirement', date: plan.people.stuart.retirementDate },
+            { name: 'SA Move', date: '2026-10-01' },
+            { name: 'SIPP Access', date: `${sBirth + 57}-06-01` },
+            { name: 'State Pension Stuart', date: `${sBirth + 67}-06-01` },
+            { name: 'State Pension Nova', date: `${nBirth + 67}-06-01` },
+          ].sort((a, b) => new Date(a.date) - new Date(b.date));
+        }, [plan]);
+
+        const timelineStart = new Date();
+        const timelineEnd = new Date(`${ageToYear(Number(plan.people.stuart.age), Number(plan.people.lifeExpectancy))}-12-31`);
+
+        const saTaxEstimate = React.useMemo(() => {
+          const taxableAnnual = plan.incomeStreams.reduce((acc, i) => {
+            if (!i.taxable) return acc;
+            if (plan.tax.nrl1iEnabled && i.name.toLowerCase().includes('rental')) return acc;
+            return acc + Number(i.monthly || 0);
+          }, 0) * 12;
+          return taxFromSABands(taxableAnnual, currencyRate);
+        }, [plan, currencyRate]);
+
+        const cgtGains = React.useMemo(() => sum(holdingsValue.map((h) => Math.max(0, h.gain))), [holdingsValue]);
+        const cgtTaxable = Math.max(0, cgtGains - Number(plan.tax.ukCgtAllowance || 0));
+
+        return (
+          <div className="min-h-screen p-4 md:p-6 text-sm">
+            <div className="max-w-7xl mx-auto space-y-4">
+              <div className="panel rounded-xl p-4 md:p-5 no-print">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h1 className="text-xl md:text-2xl font-semibold tracking-wide">Retirement Planning Dashboard</h1>
+                    <p className="muted">Bloomberg-style analytics for long-horizon planning</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="btn px-3 py-2 rounded" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                      {theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+                    </button>
+                    <button className="btn px-3 py-2 rounded" onClick={exportJson}>Export JSON</button>
+                    <label className="btn px-3 py-2 rounded cursor-pointer">
+                      Import JSON
+                      <input type="file" accept="application/json" className="hidden" onChange={importJson} />
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <div className="flex gap-2 min-w-max">
+                    {TABS.map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-3 py-2 rounded border ${
+                          activeTab === tab ? 'border-positive text-positive bg-green-900/20' : 'border-slate-700 muted'
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {activeTab === 'Dashboard' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Net Worth</div>
+                      <div className="text-xl font-semibold">{displayMoney(totalAssets)}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Monthly Surplus / Deficit</div>
+                      <div className={`text-xl font-semibold ${monthlySurplus >= 0 ? 'text-positive' : 'text-negative'}`}>{displayMoney(monthlySurplus)}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Years to State Pension</div>
+                      <div className="text-xl font-semibold">{yearsToPension}</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Portfolio Growth Assumption</div>
+                      <div className="text-xl font-semibold">{plan.assumptions.expectedReturn}%</div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="muted">Runway</div>
+                      <div className={`text-xl font-semibold ${runwayColor(runway)}`}>Money lasts until age {runway}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="panel rounded-xl p-4 h-80">
+                      <div className="font-medium mb-3">Monthly Income vs Expenses</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Income', value: Math.max(0, monthlyIncome) },
+                              { name: 'Expenses', value: Math.max(0, monthlyExpenses) },
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={100}
+                            dataKey="value"
+                          >
+                            <Cell fill="#22c55e" />
+                            <Cell fill="#ef4444" />
+                          </Pie>
+                          <Tooltip formatter={(v) => displayMoney(v)} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="panel rounded-xl p-4 h-80">
+                      <div className="font-medium mb-3">Portfolio Projection (Base Case)</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <LineChart data={projectionRows}>
+                          <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                          <XAxis dataKey="age" />
+                          <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                          <Tooltip formatter={(v) => displayMoney(v)} />
+                          <Line type="monotone" dataKey="portfolio" stroke="#22c55e" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Monte Carlo' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 panel rounded-xl p-4">
+                    <label className="space-y-1">
+                      <div className="muted">Expected Return %</div>
+                      <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.expectedReturn} onChange={(e) => updatePlan(['assumptions', 'expectedReturn'], Number(e.target.value))} />
+                    </label>
+                    <label className="space-y-1">
+                      <div className="muted">Inflation %</div>
+                      <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.inflation} onChange={(e) => updatePlan(['assumptions', 'inflation'], Number(e.target.value))} />
+                    </label>
+                    <label className="space-y-1">
+                      <div className="muted">Volatility % (Std Dev)</div>
+                      <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.volatility} onChange={(e) => updatePlan(['assumptions', 'volatility'], Number(e.target.value))} />
+                    </label>
+                    <label className="space-y-1">
+                      <div className="muted">Years to Simulate</div>
+                      <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.yearsToSimulate} onChange={(e) => updatePlan(['assumptions', 'yearsToSimulate'], Number(e.target.value))} />
+                    </label>
+                  </div>
+
+                  <div className="panel rounded-xl p-5">
+                    <div className="text-base">Probability of Success</div>
+                    <div className={`text-4xl font-bold ${mcBase.successProbability >= 75 ? 'text-positive' : mcBase.successProbability >= 55 ? 'text-amberish' : 'text-negative'}`}>
+                      {mcBase.successProbability.toFixed(1)}%
+                    </div>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 h-[26rem]">
+                    <div className="font-medium mb-3">Monte Carlo Fan Chart (10/25/50/75/90th percentiles)</div>
+                    <ResponsiveContainer width="100%" height="90%">
+                      <AreaChart data={mcBase.fan}>
+                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                        <XAxis dataKey="age" />
+                        <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                        <Tooltip formatter={(v) => displayMoney(v)} />
+                        <Area dataKey="p90" stroke="#14532d" fill="#14532d" fillOpacity={0.12} dot={false} />
+                        <Area dataKey="p75" stroke="#16a34a" fill="#16a34a" fillOpacity={0.18} dot={false} />
+                        <Area dataKey="p50" stroke="#22c55e" fill="#22c55e" fillOpacity={0.28} dot={false} />
+                        <Area dataKey="p25" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} dot={false} />
+                        <Area dataKey="p10" stroke="#ef4444" fill="#ef4444" fillOpacity={0.12} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Withdrawals' && (
+                <div className="panel rounded-xl p-4 overflow-auto">
+                  <div className="font-medium mb-3">Annual Drawdown Schedule (ISA first then SIPP from age 57)</div>
+                  <table className="w-full text-xs md:text-sm">
+                    <thead>
+                      <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                        <th className="text-left p-2">Age</th>
+                        <th className="text-left p-2">Year</th>
+                        <th className="text-left p-2">Source Account</th>
+                        <th className="text-right p-2">Amount Drawn</th>
+                        <th className="text-right p-2">Remaining Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {withdrawalSchedule.map((r, idx) => (
+                        <tr key={`${r.year}-${r.source}-${idx}`} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <td className="p-2">{r.age}</td>
+                          <td className="p-2">{r.year}</td>
+                          <td className="p-2">{r.source}</td>
+                          <td className="p-2 text-right">{displayMoney(r.amount)}</td>
+                          <td className="p-2 text-right">{displayMoney(r.remaining)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeTab === 'Scenarios' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {scenarioSet.map((s) => (
+                      <div key={s.id} className="panel rounded-xl p-4 space-y-2">
+                        <input className="field rounded px-2 py-1 w-full" value={s.name} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: e.target.value } : x)))} />
+                        <label className="block">
+                          <div className="muted">Return Adj %</div>
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={s.returnAdj} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, returnAdj: Number(e.target.value) } : x)))} />
+                        </label>
+                        <label className="block">
+                          <div className="muted">Expense Adj %</div>
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={s.expenseAdjPct} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, expenseAdjPct: Number(e.target.value) } : x)))} />
+                        </label>
+                        <label className="block">
+                          <div className="muted">Extra Assets Now (£)</div>
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={s.extraAssetDelta} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, extraAssetDelta: Number(e.target.value) } : x)))} />
+                        </label>
+                        <label className="block">
+                          <div className="muted">Lump Sum Age</div>
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={s.lumpSumAge} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, lumpSumAge: e.target.value } : x)))} />
+                        </label>
+                        <label className="block">
+                          <div className="muted">Lump Sum Amount (£)</div>
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={s.lumpSumAmount} onChange={(e) => setScenarioSet((prev) => prev.map((x) => (x.id === s.id ? { ...x, lumpSumAmount: Number(e.target.value) } : x)))} />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="panel rounded-xl p-4 h-[24rem]">
+                    <div className="font-medium mb-3">Scenario Comparison</div>
+                    <ResponsiveContainer width="100%" height="90%">
+                      <BarChart data={scenarioMetrics}>
+                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis yAxisId="left" />
+                        <YAxis yAxisId="right" orientation="right" domain={[70, 95]} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="success" name="Success %" fill="#22c55e" />
+                        <Bar yAxisId="right" dataKey="runway" name="Runway Age" fill="#f59e0b" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Projections' && (
+                <div className="space-y-4">
+                  <div className="panel rounded-xl p-4 h-[24rem]">
+                    <div className="font-medium mb-3">Income & Expense Projection</div>
+                    <ResponsiveContainer width="100%" height="90%">
+                      <ComposedChart data={projectionRows}>
+                        <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                        <XAxis dataKey="age" />
+                        <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                        <Tooltip formatter={(v) => displayMoney(v)} />
+                        <Legend />
+                        {plan.incomeStreams.slice(0, 4).map((stream, idx) => (
+                          <Area key={stream.id} type="monotone" dataKey={stream.name} stackId="1" fillOpacity={0.4} fill={['#16a34a', '#10b981', '#34d399', '#86efac'][idx % 4]} stroke="none" />
+                        ))}
+                        <Line type="monotone" dataKey="annualExpense" stroke="#ef4444" strokeWidth={2} dot={false} name="Expenses" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-3">Year-by-Year Projection</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="text-left p-2">Age</th>
+                          <th className="text-left p-2">Year</th>
+                          <th className="text-right p-2">Income</th>
+                          <th className="text-right p-2">Expenses</th>
+                          <th className="text-right p-2">Net</th>
+                          <th className="text-right p-2">Portfolio</th>
+                          <th className="text-right p-2">Drawdown %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectionRows.map((r) => (
+                          <tr key={r.year} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2">{r.age}</td>
+                            <td className="p-2">{r.year}</td>
+                            <td className="p-2 text-right">{displayMoney(r.income)}</td>
+                            <td className="p-2 text-right">{displayMoney(r.annualExpense)}</td>
+                            <td className={`p-2 text-right ${r.net >= 0 ? 'text-positive' : 'text-negative'}`}>{displayMoney(r.net)}</td>
+                            <td className="p-2 text-right">{displayMoney(r.portfolio)}</td>
+                            <td className="p-2 text-right">{r.drawdownRate.toFixed(2)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Tax' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="panel rounded-xl p-4 space-y-3">
+                    <div className="font-medium">Tax Settings</div>
+                    <label className="flex items-center justify-between">
+                      <span>NRL1i enabled (rental income tax neutral)</span>
+                      <input type="checkbox" checked={plan.tax.nrl1iEnabled} onChange={(e) => updatePlan(['tax', 'nrl1iEnabled'], e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span>UK Self Assessment reminder</span>
+                      <input type="checkbox" checked={plan.tax.selfAssessmentReminder} onChange={(e) => updatePlan(['tax', 'selfAssessmentReminder'], e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span>SA tax resident</span>
+                      <input type="checkbox" checked={plan.tax.saTaxResident} onChange={(e) => updatePlan(['tax', 'saTaxResident'], e.target.checked)} />
+                    </label>
+                    <label className="block">
+                      <div className="muted">UK CGT allowance (£)</div>
+                      <input className="field rounded px-2 py-1 w-full" type="number" value={plan.tax.ukCgtAllowance} onChange={(e) => updatePlan(['tax', 'ukCgtAllowance'], Number(e.target.value))} />
+                    </label>
+                  </div>
+                  <div className="panel rounded-xl p-4 space-y-2">
+                    <div className="font-medium">Tax Estimates</div>
+                    <div className="muted">SA marginal estimate (simple lookup)</div>
+                    <div>Taxable income: {fmtMoney(saTaxEstimate.taxableZar, 'ZAR')}</div>
+                    <div>Estimated SA tax: {fmtMoney(saTaxEstimate.taxZar, 'ZAR')} ({fmtMoney(saTaxEstimate.taxGBP, 'GBP')})</div>
+                    <div className="muted mt-3">CGT Estimate (UK)</div>
+                    <div>Unrealised gains: {fmtMoney(cgtGains, 'GBP')}</div>
+                    <div>Taxable after allowance: {fmtMoney(cgtTaxable, 'GBP')}</div>
+                    <div>Est. CGT @20%: {fmtMoney(cgtTaxable * 0.2, 'GBP')}</div>
+                    {plan.tax.selfAssessmentReminder && <div className="text-amberish mt-2">Reminder: include UK Self Assessment in annual milestones.</div>}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Currency' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="panel rounded-xl p-4 space-y-3">
+                    <div className="font-medium">Currency Management</div>
+                    <label className="block">
+                      <div className="muted">GBP/ZAR rate</div>
+                      <input className="field rounded px-2 py-1 w-full" type="number" step="0.1" value={plan.currency.gbpZar} onChange={(e) => updatePlan(['currency', 'gbpZar'], Number(e.target.value))} />
+                    </label>
+                    <label className="block">
+                      <div className="muted">Display mode</div>
+                      <select className="select rounded px-2 py-1 w-full" value={plan.currency.display} onChange={(e) => updatePlan(['currency', 'display'], e.target.value)}>
+                        <option value="GBP">GBP</option>
+                        <option value="ZAR">ZAR</option>
+                        <option value="BOTH">Both</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <div className="muted">Exchange Scenario</div>
+                      <select className="select rounded px-2 py-1 w-full" value={plan.currency.scenario} onChange={(e) => updatePlan(['currency', 'scenario'], e.target.value)}>
+                        <option value="base">Base</option>
+                        <option value="weak">Weak Rand (+20%)</option>
+                        <option value="strong">Strong Rand (-20%)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="panel rounded-xl p-4 space-y-2">
+                    <div className="font-medium">Converted Values</div>
+                    <div>Effective FX rate: {currencyRate.toFixed(2)}</div>
+                    <div>Monthly drawdown: {fmtMoney(plan.expenses.monthlyDrawdown, 'GBP')} / {fmtMoney(plan.expenses.monthlyDrawdown * currencyRate, 'ZAR')}</div>
+                    <div>Total assets: {displayMoney(totalAssets)}</div>
+                    <div>Monthly surplus: <span className={monthlySurplus >= 0 ? 'text-positive' : 'text-negative'}>{displayMoney(monthlySurplus)}</span></div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Portfolio' && (
+                <div className="space-y-4">
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-3">Key Holdings + 30-year CAGR Projection</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="text-left p-2">Holding</th>
+                          <th className="text-right p-2">Qty</th>
+                          <th className="text-right p-2">Avg Buy</th>
+                          <th className="text-right p-2">Current</th>
+                          <th className="text-right p-2">Current Value</th>
+                          <th className="text-right p-2">30Y Projection</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holdingsValue.map((h) => {
+                          const projected = h.currentValue * Math.pow(1 + Number(h.cagr || 0) / 100, 30);
+                          return (
+                            <tr key={h.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                              <td className="p-2">{h.name}</td>
+                              <td className="p-2 text-right">{h.quantity}</td>
+                              <td className="p-2 text-right">{fmtMoney(h.avgBuy, 'GBP', 2)}</td>
+                              <td className="p-2 text-right">{fmtMoney(h.current, 'GBP', 2)}</td>
+                              <td className="p-2 text-right">{fmtMoney(h.currentValue, 'GBP')}</td>
+                              <td className="p-2 text-right">{fmtMoney(projected, 'GBP')}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 space-y-3">
+                    <div className="font-medium">Hypothetical Asset Slots (10-year)</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                      {plan.hypotheticals.map((h) => (
+                        <div key={h.id} className="border rounded p-2" style={{ borderColor: 'var(--line)' }}>
+                          <label className="flex items-center justify-between mb-2">
+                            <span className="text-xs">Include</span>
+                            <input type="checkbox" checked={h.enabled} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, enabled: e.target.checked } : x)) }))} />
+                          </label>
+                          <input className="field rounded px-2 py-1 w-full mb-1" value={h.name} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, name: e.target.value } : x)) }))} />
+                          <input className="field rounded px-2 py-1 w-full mb-1" type="number" value={h.startValue} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, startValue: Number(e.target.value) } : x)) }))} />
+                          <input className="field rounded px-2 py-1 w-full" type="number" value={h.cagr} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, cagr: Number(e.target.value) } : x)) }))} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="h-[22rem]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={Array.from({ length: 11 }, (_, y) => {
+                            const row = { year: y };
+                            plan.hypotheticals.forEach((h) => {
+                              row[h.name] = Number(h.startValue) * Math.pow(1 + Number(h.cagr) / 100, y);
+                            });
+                            return row;
+                          })}
+                        >
+                          <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                          <XAxis dataKey="year" />
+                          <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                          <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
+                          <Legend />
+                          {plan.hypotheticals.map((h, idx) => (
+                            <Line key={h.id} type="monotone" dataKey={h.name} dot={false} stroke={['#22c55e', '#14b8a6', '#f59e0b', '#3b82f6', '#ef4444'][idx % 5]} />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <th className="p-2 text-left">Year</th>
+                            {plan.hypotheticals.map((h) => <th key={h.id} className="p-2 text-right">{h.name}</th>)}
+                            <th className="p-2 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: 11 }, (_, year) => {
+                            const vals = plan.hypotheticals.map((h) => Number(h.startValue) * Math.pow(1 + Number(h.cagr) / 100, year));
+                            return (
+                              <tr key={year} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                                <td className="p-2">{year}</td>
+                                {vals.map((v, i) => <td key={i} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>)}
+                                <td className="p-2 text-right font-semibold">{fmtMoney(sum(vals), 'GBP')}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Milestones' && (
+                <div className="space-y-4">
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-medium mb-3">Timeline: Now to Age {plan.people.lifeExpectancy}</div>
+                    <div className="relative py-8">
+                      <div className="timeline-line h-1 rounded"></div>
+                      <div className="relative mt-4">
+                        {milestoneData.map((m) => {
+                          const date = new Date(m.date);
+                          const pct = ((date - timelineStart) / (timelineEnd - timelineStart)) * 100;
+                          return (
+                            <div key={m.name} className="absolute" style={{ left: `${Math.max(0, Math.min(100, pct))}%`, transform: 'translateX(-50%)' }}>
+                              <div className="w-3 h-3 rounded-full bg-amberish mx-auto"></div>
+                              <div className="text-xs mt-1 whitespace-nowrap">{m.name}</div>
+                              <div className="text-[10px] muted whitespace-nowrap">{new Date(m.date).toLocaleDateString('en-GB')}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="panel rounded-xl p-4">
+                      <div className="font-medium mb-2">Upcoming Milestones</div>
+                      <div className="space-y-2">
+                        {milestoneData.map((m) => {
+                          const now = new Date();
+                          const d = new Date(m.date);
+                          const days = Math.round((d - now) / 86400000);
+                          const years = (days / 365.25).toFixed(1);
+                          return (
+                            <div key={m.name} className="flex justify-between border-b pb-1" style={{ borderColor: 'var(--line)' }}>
+                              <span>{m.name}</span>
+                              <span className="muted">{days >= 0 ? `${days} days (${years} yrs)` : 'Passed'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="panel rounded-xl p-4">
+                      <div className="font-medium mb-2">Alerts</div>
+                      <ul className="space-y-2">
+                        {plan.milestones.alerts.map((a, i) => (
+                          <li key={i} className="text-amberish">• {a}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Settings' && (
+                <div className="space-y-4">
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-medium mb-3">People & Assumptions</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <label>
+                        <div className="muted">Stuart age</div>
+                        <input className="field w-full rounded px-2 py-1" type="number" value={plan.people.stuart.age} onChange={(e) => updatePlan(['people', 'stuart', 'age'], Number(e.target.value))} />
+                      </label>
+                      <label>
+                        <div className="muted">Nova age</div>
+                        <input className="field w-full rounded px-2 py-1" type="number" value={plan.people.nova.age} onChange={(e) => updatePlan(['people', 'nova', 'age'], Number(e.target.value))} />
+                      </label>
+                      <label>
+                        <div className="muted">Life expectancy</div>
+                        <input className="field w-full rounded px-2 py-1" type="number" value={plan.people.lifeExpectancy} onChange={(e) => updatePlan(['people', 'lifeExpectancy'], Number(e.target.value))} />
+                      </label>
+                      <label>
+                        <div className="muted">SA inflation % default</div>
+                        <input className="field w-full rounded px-2 py-1" type="number" value={plan.assumptions.saInflation} onChange={(e) => updatePlan(['assumptions', 'saInflation'], Number(e.target.value))} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-2">Accounts</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="p-2 text-left">Name</th>
+                          <th className="p-2 text-left">Type</th>
+                          <th className="p-2 text-right">Value (£)</th>
+                          <th className="p-2 text-right">Accessible age</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.accounts.map((a) => (
+                          <tr key={a.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={a.name} onChange={(e) => setPlan((prev) => ({ ...prev, accounts: prev.accounts.map((x) => (x.id === a.id ? { ...x, name: e.target.value } : x)) }))} /></td>
+                            <td className="p-2"><select className="select rounded px-2 py-1" value={a.type} onChange={(e) => setPlan((prev) => ({ ...prev, accounts: prev.accounts.map((x) => (x.id === a.id ? { ...x, type: e.target.value } : x)) }))}><option>ISA</option><option>SIPP</option><option>GIA</option><option>Crypto</option></select></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={a.value} onChange={(e) => setPlan((prev) => ({ ...prev, accounts: prev.accounts.map((x) => (x.id === a.id ? { ...x, value: Number(e.target.value) } : x)) }))} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={a.accessibleAge} onChange={(e) => setPlan((prev) => ({ ...prev, accounts: prev.accounts.map((x) => (x.id === a.id ? { ...x, accessibleAge: Number(e.target.value) } : x)) }))} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button className="btn mt-2 px-3 py-1 rounded" onClick={() => setPlan((prev) => ({ ...prev, accounts: [...prev.accounts, { id: crypto.randomUUID(), name: 'New Account', value: 0, type: 'GIA', accessibleAge: prev.people.stuart.age }] }))}>Add Account</button>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-2">Income Streams</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="p-2 text-left">Name</th>
+                          <th className="p-2 text-right">Monthly (£)</th>
+                          <th className="p-2 text-right">Start Age</th>
+                          <th className="p-2 text-right">End Age</th>
+                          <th className="p-2 text-center">Taxable</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.incomeStreams.map((i) => (
+                          <tr key={i.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full" value={i.name} onChange={(e) => setPlan((prev) => ({ ...prev, incomeStreams: prev.incomeStreams.map((x) => (x.id === i.id ? { ...x, name: e.target.value } : x)) }))} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={i.monthly} onChange={(e) => setPlan((prev) => ({ ...prev, incomeStreams: prev.incomeStreams.map((x) => (x.id === i.id ? { ...x, monthly: Number(e.target.value) } : x)) }))} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={i.startAge} onChange={(e) => setPlan((prev) => ({ ...prev, incomeStreams: prev.incomeStreams.map((x) => (x.id === i.id ? { ...x, startAge: Number(e.target.value) } : x)) }))} /></td>
+                            <td className="p-2"><input className="field rounded px-2 py-1 w-full text-right" type="number" value={i.endAge} onChange={(e) => setPlan((prev) => ({ ...prev, incomeStreams: prev.incomeStreams.map((x) => (x.id === i.id ? { ...x, endAge: Number(e.target.value) } : x)) }))} /></td>
+                            <td className="p-2 text-center"><input type="checkbox" checked={i.taxable} onChange={(e) => setPlan((prev) => ({ ...prev, incomeStreams: prev.incomeStreams.map((x) => (x.id === i.id ? { ...x, taxable: e.target.checked } : x)) }))} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button className="btn mt-2 px-3 py-1 rounded" onClick={() => setPlan((prev) => ({ ...prev, incomeStreams: [...prev.incomeStreams, { id: crypto.randomUUID(), name: 'Additional income', monthly: 0, startAge: prev.people.stuart.age, endAge: prev.people.lifeExpectancy, taxable: true }] }))}>Add Income Row</button>
+                  </div>
+
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-medium mb-2">Expenses & Scenario Snapshots</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label>
+                        <div className="muted">Monthly drawdown (£)</div>
+                        <input className="field w-full rounded px-2 py-1" type="number" value={plan.expenses.monthlyDrawdown} onChange={(e) => updatePlan(['expenses', 'monthlyDrawdown'], Number(e.target.value))} />
+                      </label>
+                      <div>
+                        <div className="muted mb-1">Save / load named plans</div>
+                        <div className="flex gap-2">
+                          <input className="field rounded px-2 py-1 flex-1" value={newSaveName} onChange={(e) => setNewSaveName(e.target.value)} placeholder="Name" />
+                          <button className="btn px-3 py-1 rounded" onClick={saveNamedScenario}>Save</button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {Object.keys(savedPlans).map((name) => (
+                            <button key={name} className="btn px-2 py-1 rounded text-xs" onClick={() => loadNamedScenario(name)}>{name}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-2">Expense Categories</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="p-2 text-left">Category</th>
+                          <th className="p-2 text-right">Monthly (£)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.expenses.categories.map((c) => (
+                          <tr key={c.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full"
+                                value={c.name}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({
+                                    ...prev,
+                                    expenses: {
+                                      ...prev.expenses,
+                                      categories: prev.expenses.categories.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={c.monthly}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({
+                                    ...prev,
+                                    expenses: {
+                                      ...prev.expenses,
+                                      categories: prev.expenses.categories.map((x) => (x.id === c.id ? { ...x, monthly: Number(e.target.value) } : x)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button
+                      className="btn mt-2 px-3 py-1 rounded"
+                      onClick={() =>
+                        setPlan((prev) => ({
+                          ...prev,
+                          expenses: {
+                            ...prev.expenses,
+                            categories: [...prev.expenses.categories, { id: crypto.randomUUID(), name: 'New Category', monthly: 0 }],
+                          },
+                        }))
+                      }
+                    >
+                      Add Category
+                    </button>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-2">One-Off Expenses</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="p-2 text-left">Name</th>
+                          <th className="p-2 text-right">Amount (£)</th>
+                          <th className="p-2 text-right">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.expenses.oneOffs.map((o) => (
+                          <tr key={o.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full"
+                                value={o.name}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({
+                                    ...prev,
+                                    expenses: {
+                                      ...prev.expenses,
+                                      oneOffs: prev.expenses.oneOffs.map((x) => (x.id === o.id ? { ...x, name: e.target.value } : x)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={o.amount}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({
+                                    ...prev,
+                                    expenses: {
+                                      ...prev.expenses,
+                                      oneOffs: prev.expenses.oneOffs.map((x) => (x.id === o.id ? { ...x, amount: Number(e.target.value) } : x)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="date"
+                                value={o.date}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({
+                                    ...prev,
+                                    expenses: {
+                                      ...prev.expenses,
+                                      oneOffs: prev.expenses.oneOffs.map((x) => (x.id === o.id ? { ...x, date: e.target.value } : x)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button
+                      className="btn mt-2 px-3 py-1 rounded"
+                      onClick={() =>
+                        setPlan((prev) => ({
+                          ...prev,
+                          expenses: {
+                            ...prev.expenses,
+                            oneOffs: [...prev.expenses.oneOffs, { id: crypto.randomUUID(), name: 'One-off', amount: 0, date: `${CURRENT_YEAR}-01-01` }],
+                          },
+                        }))
+                      }
+                    >
+                      Add One-Off
+                    </button>
+                  </div>
+
+                  <div className="panel rounded-xl p-4 overflow-auto">
+                    <div className="font-medium mb-2">Key Holdings</div>
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                          <th className="p-2 text-left">Name</th>
+                          <th className="p-2 text-right">Quantity</th>
+                          <th className="p-2 text-right">Avg Buy</th>
+                          <th className="p-2 text-right">Current</th>
+                          <th className="p-2 text-right">CAGR %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.holdings.map((h) => (
+                          <tr key={h.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full"
+                                value={h.name}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({ ...prev, holdings: prev.holdings.map((x) => (x.id === h.id ? { ...x, name: e.target.value } : x)) }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={h.quantity}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({ ...prev, holdings: prev.holdings.map((x) => (x.id === h.id ? { ...x, quantity: Number(e.target.value) } : x)) }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={h.avgBuy}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({ ...prev, holdings: prev.holdings.map((x) => (x.id === h.id ? { ...x, avgBuy: Number(e.target.value) } : x)) }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={h.current}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({ ...prev, holdings: prev.holdings.map((x) => (x.id === h.id ? { ...x, current: Number(e.target.value) } : x)) }))
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="field rounded px-2 py-1 w-full text-right"
+                                type="number"
+                                value={h.cagr}
+                                onChange={(e) =>
+                                  setPlan((prev) => ({ ...prev, holdings: prev.holdings.map((x) => (x.id === h.id ? { ...x, cagr: Number(e.target.value) } : x)) }))
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button
+                      className="btn mt-2 px-3 py-1 rounded"
+                      onClick={() =>
+                        setPlan((prev) => ({
+                          ...prev,
+                          holdings: [...prev.holdings, { id: crypto.randomUUID(), name: 'New Holding', quantity: 0, avgBuy: 0, current: 0, cagr: 8 }],
+                        }))
+                      }
+                    >
+                      Add Holding
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
