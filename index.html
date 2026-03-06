@@ -81,11 +81,25 @@
     </style>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script crossorigin src="https://unpkg.com/recharts@2.13.3/umd/Recharts.js"></script>
+    <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <div id="error-display" style="display:none;color:red;background:#111;padding:20px;font-family:monospace;white-space:pre-wrap;position:fixed;top:0;left:0;right:0;z-index:9999;max-height:50vh;overflow:auto;font-size:13px;"></div>
+    <script>
+      window.onerror = function(msg, src, line, col, err) {
+        var d = document.getElementById('error-display');
+        d.style.display = 'block';
+        d.textContent = 'JS ERROR:\n' + msg + '\n' + (err && err.stack ? err.stack : '') + '\nAt: ' + src + ':' + line + ':' + col;
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        var d = document.getElementById('error-display');
+        d.style.display = 'block';
+        d.textContent += '\nUnhandled Promise: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
+      });
+    </script>
 
     <script type="text/babel">
       const {
@@ -105,7 +119,7 @@
         Pie,
         Cell,
         ComposedChart,
-      } = Recharts;
+      } = window.Recharts;
 
       const TABS = [
         'Dashboard',
@@ -1086,7 +1100,7 @@
                     <div className="font-medium mb-3">Timeline: Now to Age {plan.people.lifeExpectancy}</div>
                     <div className="relative py-8">
                       <div className="timeline-line h-1 rounded"></div>
-                      <div className="relative mt-4">
+                      <div className="relative mt-4" style={{ height: '80px' }}>
                         {milestoneData.map((m) => {
                           const date = new Date(m.date);
                           const pct = ((date - timelineStart) / (timelineEnd - timelineStart)) * 100;
