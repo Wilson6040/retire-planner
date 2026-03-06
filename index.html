@@ -171,6 +171,54 @@
   </head>
   <body>
     <div id="root"></div>
+    <div id="gate" style="display:none;position:fixed;inset:0;z-index:99999;background:#0a0f1e;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;">
+      <div style="text-align:center;margin-bottom:8px;">
+        <div style="font-size:2.5rem;margin-bottom:8px;">🔐</div>
+        <div style="font-size:1.4rem;font-weight:600;color:#fff;letter-spacing:0.05em;">Retirement Planner</div>
+        <div style="color:#9fb0d0;font-size:0.85rem;margin-top:4px;">Private — authorised access only</div>
+      </div>
+      <div style="background:#11172a;border:1px solid #253150;border-radius:14px;padding:32px 36px;width:100%;max-width:360px;">
+        <label style="display:block;color:#9fb0d0;font-size:0.8rem;margin-bottom:6px;letter-spacing:0.08em;text-transform:uppercase;">Password</label>
+        <input id="gate-input" type="password" placeholder="Enter password"
+          style="width:100%;background:#0a0f1e;border:1px solid #253150;border-radius:8px;padding:10px 14px;color:#fff;font-size:1rem;outline:none;box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter')checkGate()"
+        />
+        <div id="gate-error" style="color:#ef4444;font-size:0.8rem;margin-top:8px;min-height:18px;"></div>
+        <button onclick="checkGate()"
+          style="width:100%;margin-top:12px;background:#22c55e;border:none;border-radius:8px;padding:11px;color:#0a0f1e;font-weight:700;font-size:1rem;cursor:pointer;letter-spacing:0.03em;">
+          Unlock
+        </button>
+      </div>
+      <div style="color:#253150;font-size:0.7rem;">wilson6040 · private</div>
+    </div>
+    <script>
+      (function() {
+        // SHA-256 hash of the password (never store plaintext)
+        // Current hash = SHA-256 of "retireplan2026"
+        var HASH = '7ce0be48e2c4671f9ff1878db27f35ee570cbc07f0cb2e28829bb1e7c24c5979';
+        async function sha256(str) {
+          const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+        }
+        window.checkGate = async function() {
+          const val = document.getElementById('gate-input').value;
+          const h = await sha256(val);
+          if (h === HASH) {
+            sessionStorage.setItem('rp_auth', '1');
+            document.getElementById('gate').style.display = 'none';
+          } else {
+            document.getElementById('gate-error').textContent = 'Incorrect password.';
+            document.getElementById('gate-input').value = '';
+            document.getElementById('gate-input').focus();
+          }
+        };
+        if (sessionStorage.getItem('rp_auth') !== '1') {
+          document.getElementById('gate').style.display = 'flex';
+        } else {
+          document.getElementById('gate').style.display = 'none';
+        }
+      })();
+    </script>
     <div id="error-display" style="display:none;color:red;background:#111;padding:20px;font-family:monospace;white-space:pre-wrap;position:fixed;top:0;left:0;right:0;z-index:9999;max-height:50vh;overflow:auto;font-size:13px;"></div>
     <script>
       window.onerror = function(msg, src, line, col, err) {
