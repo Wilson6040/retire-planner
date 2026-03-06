@@ -200,11 +200,16 @@
           const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
           return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
         }
+        var TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+        function isAuthed() {
+          var exp = localStorage.getItem('rp_auth_exp');
+          return exp && Date.now() < Number(exp);
+        }
         window.checkGate = async function() {
-          const val = document.getElementById('gate-input').value;
-          const h = await sha256(val);
+          var val = document.getElementById('gate-input').value;
+          var h = await sha256(val);
           if (h === HASH) {
-            sessionStorage.setItem('rp_auth', '1');
+            localStorage.setItem('rp_auth_exp', Date.now() + TTL);
             document.getElementById('gate').style.display = 'none';
           } else {
             document.getElementById('gate-error').textContent = 'Incorrect password.';
@@ -212,10 +217,10 @@
             document.getElementById('gate-input').focus();
           }
         };
-        if (sessionStorage.getItem('rp_auth') !== '1') {
-          document.getElementById('gate').style.display = 'flex';
-        } else {
+        if (isAuthed()) {
           document.getElementById('gate').style.display = 'none';
+        } else {
+          document.getElementById('gate').style.display = 'flex';
         }
       })();
     </script>
