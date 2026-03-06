@@ -617,6 +617,8 @@
         const [scenarioSet, setScenarioSet] = usePersistentState('retire-scenarios-v1', defaultScenarioSet);
         const [savedPlans, setSavedPlans] = usePersistentState('retire-snapshots-v1', {});
         const [newSaveName, setNewSaveName] = React.useState('');
+        const [expandedAsset, setExpandedAsset] = React.useState(null);
+        const [expMode, setExpMode] = React.useState('monthly');
 
         React.useEffect(() => {
           document.documentElement.setAttribute('data-theme', theme);
@@ -1242,8 +1244,6 @@
                     setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.filter(a => a.id !== id) }));
                   }
 
-                  const [expandedAsset, setExpandedAsset] = React.useState(null);
-
                   return (
                     <div className="space-y-4">
 
@@ -1434,7 +1434,7 @@
 
                   {/* ── RETIREMENT SETTINGS ── */}
                   {(() => {
-                    const [expMode, setExpMode] = React.useState('monthly');
+
                     const monthly = Number(plan.expenses.monthlyDrawdown || 0);
                     const yearly = monthly * 12;
                     const inflation = Number(plan.assumptions.inflation || 5);
