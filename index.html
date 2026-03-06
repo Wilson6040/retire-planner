@@ -1431,6 +1431,133 @@
 
               {activeTab === 'Settings' && (
                 <div className="space-y-4">
+
+                  {/* ── RETIREMENT SETTINGS ── */}
+                  {(() => {
+                    const [expMode, setExpMode] = React.useState('monthly');
+                    const monthly = Number(plan.expenses.monthlyDrawdown || 0);
+                    const yearly = monthly * 12;
+                    const inflation = Number(plan.assumptions.inflation || 5);
+                    const catTotal = sum(plan.expenses.categories.map(c => Number(c.monthly || 0)));
+                    const realReturn = (r) => Math.max(0, r - inflation);
+
+                    return (
+                      <div className="panel rounded-xl p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <div className="font-semibold text-base">⚙️ Retirement Settings</div>
+                            <div className="muted text-xs mt-0.5">Expenses and inflation applied across all projections and Monte Carlo</div>
+                          </div>
+                          {/* Monthly / Yearly toggle */}
+                          <div className="flex rounded-lg overflow-hidden border text-xs font-medium" style={{ borderColor: 'var(--line)' }}>
+                            <button onClick={() => setExpMode('monthly')}
+                              className="px-4 py-2 transition-colors"
+                              style={{ background: expMode === 'monthly' ? '#22c55e' : 'var(--panel-2)', color: expMode === 'monthly' ? '#0a0f1e' : 'var(--muted)' }}>
+                              Monthly
+                            </button>
+                            <button onClick={() => setExpMode('yearly')}
+                              className="px-4 py-2 transition-colors"
+                              style={{ background: expMode === 'yearly' ? '#22c55e' : 'var(--panel-2)', color: expMode === 'yearly' ? '#0a0f1e' : 'var(--muted)' }}>
+                              Yearly
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                          {/* Total drawdown */}
+                          <div className="rounded-xl p-4" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                            <div className="text-xs muted uppercase tracking-wide mb-2">Total Retirement Drawdown</div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg font-bold text-positive">
+                                {expMode === 'monthly' ? fmtMoney(monthly, 'GBP') : fmtMoney(yearly, 'GBP')}
+                              </span>
+                              <span className="muted text-xs">/{expMode === 'monthly' ? 'mo' : 'yr'}</span>
+                            </div>
+                            <input className="field rounded px-2 py-1 w-full text-sm mt-1" type="number"
+                              value={expMode === 'monthly' ? monthly : yearly}
+                              onChange={e => updatePlan(['expenses', 'monthlyDrawdown'],
+                                expMode === 'monthly' ? Number(e.target.value) : Number(e.target.value) / 12)}
+                            />
+                            <div className="text-xs muted mt-2">
+                              = {expMode === 'monthly' ? fmtMoney(yearly, 'GBP') + '/yr' : fmtMoney(monthly, 'GBP') + '/mo'}
+                            </div>
+                          </div>
+
+                          {/* Inflation */}
+                          <div className="rounded-xl p-4" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                            <div className="text-xs muted uppercase tracking-wide mb-2">Inflation Assumption</div>
+                            <div className="flex items-end gap-2 mb-2">
+                              <span className="text-3xl font-bold" style={{ color: inflation >= 6 ? '#ef4444' : inflation >= 4 ? '#f59e0b' : '#22c55e' }}>
+                                {inflation}%
+                              </span>
+                              <span className="muted text-xs mb-1">per year</span>
+                            </div>
+                            <input className="w-full accent-green-500" type="range" min="1" max="15" step="0.5"
+                              value={inflation}
+                              onChange={e => updatePlan(['assumptions', 'inflation'], Number(e.target.value))}
+                            />
+                            <div className="flex justify-between text-xs muted mt-1"><span>1%</span><span>15%</span></div>
+                            <div className="mt-3 space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="muted">Expenses in 10 yrs</span>
+                                <span>{fmtMoney(monthly * Math.pow(1 + inflation/100, 10), 'GBP')}/mo</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="muted">Expenses in 20 yrs</span>
+                                <span>{fmtMoney(monthly * Math.pow(1 + inflation/100, 20), 'GBP')}/mo</span>
+                              </div>
+                              <div className="flex justify-between border-t pt-1 mt-1" style={{ borderColor: 'var(--line)' }}>
+                                <span className="muted">Real portfolio return*</span>
+                                <span className="text-amberish">nominal − {inflation}%</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Expense categories */}
+                          <div className="rounded-xl p-4" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}>
+                            <div className="text-xs muted uppercase tracking-wide mb-2">Monthly Expense Categories</div>
+                            <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                              {plan.expenses.categories.map(c => (
+                                <div key={c.id} className="flex items-center gap-2">
+                                  <span className="text-xs flex-1 muted">{c.name}</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs muted">£</span>
+                                    <input className="field rounded px-1 py-0.5 text-xs w-20 text-right" type="number"
+                                      value={expMode === 'monthly' ? c.monthly : Math.round(c.monthly * 12)}
+                                      onChange={e => setPlan(prev => ({ ...prev, expenses: { ...prev.expenses,
+                                        categories: prev.expenses.categories.map(x => x.id === c.id
+                                          ? { ...x, monthly: expMode === 'monthly' ? Number(e.target.value) : Number(e.target.value) / 12 }
+                                          : x)
+                                      }}))}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="border-t pt-2 mt-2 flex justify-between text-xs font-semibold" style={{ borderColor: 'var(--line)' }}>
+                              <span>Total</span>
+                              <span className="text-positive">
+                                {expMode === 'monthly' ? fmtMoney(catTotal, 'GBP') + '/mo' : fmtMoney(catTotal * 12, 'GBP') + '/yr'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Impact banner */}
+                        <div className="mt-4 rounded-lg p-3 text-xs grid grid-cols-2 md:grid-cols-4 gap-3"
+                          style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                          <div><div className="muted mb-0.5">Annual spend (today)</div><div className="font-semibold">{fmtMoney(yearly, 'GBP')}</div></div>
+                          <div><div className="muted mb-0.5">Inflation-adj @ 10yrs</div><div className="font-semibold text-amberish">{fmtMoney(yearly * Math.pow(1 + inflation/100, 10), 'GBP')}</div></div>
+                          <div><div className="muted mb-0.5">Inflation-adj @ 20yrs</div><div className="font-semibold text-negative">{fmtMoney(yearly * Math.pow(1 + inflation/100, 20), 'GBP')}</div></div>
+                          <div><div className="muted mb-0.5">Portfolio devaluation/yr</div><div className="font-semibold text-negative">−{inflation}% real</div></div>
+                        </div>
+                        <div className="text-xs muted mt-2">* All projections use real returns (nominal CAGR minus this inflation rate). SA 5% default reflects ZAR purchasing power erosion.</div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── PEOPLE & ASSUMPTIONS ── */}
                   <div className="panel rounded-xl p-4">
                     <div className="font-medium mb-3">People & Assumptions</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
