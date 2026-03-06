@@ -349,7 +349,7 @@
           alerts: [
             'File NRL1i before leaving UK',
             'Review SIPP drawdown strategy at 55',
-            'CGT review before selling GGP',
+            'Crypto CGT review before any large disposal',
           ],
         },
       };
@@ -778,8 +778,33 @@
           return taxFromSABands(taxableAnnual, currencyRate);
         }, [plan, currencyRate]);
 
-        const cgtGains = React.useMemo(() => sum(holdingsValue.map((h) => Math.max(0, h.gain))), [holdingsValue]);
+        // CGT only on crypto accounts (ISA holdings are exempt)
+        const cryptoValue = React.useMemo(() =>
+          sum(plan.accounts.filter(a => a.type === 'Crypto').map(a => Number(a.value || 0)))
+        , [plan.accounts]);
+        // Crypto CGT: assume user enters cost basis; default to 40% of current value as rough gain placeholder
+        const cryptoCostBasis = React.useMemo(() =>
+          sum(plan.accounts.filter(a => a.type === 'Crypto').map(a => Number(a.costBasis || Number(a.value || 0) * 0.4)))
+        , [plan.accounts]);
+        const cgtGains = React.useMemo(() => Math.max(0, cryptoValue - cryptoCostBasis), [cryptoValue, cryptoCostBasis]);
         const cgtTaxable = Math.max(0, cgtGains - Number(plan.tax.ukCgtAllowance || 0));
+
+        // SIPP income tax: 25% PCLS tax-free, remainder taxed as income
+        const sippValue = React.useMemo(() =>
+          sum(plan.accounts.filter(a => a.type === 'SIPP').map(a => Number(a.value || 0)))
+        , [plan.accounts]);
+        const sippTaxFreeAmount = sippValue * 0.25;
+        const sippTaxableAmount = sippValue * 0.75;
+        // Spread taxable over 20 years drawdown for annual income estimate
+        const sippAnnualTaxableIncome = sippTaxableAmount / 20;
+        // UK income tax on SIPP drawdown (simplified 2024/25 bands)
+        function ukIncomeTax(income) {
+          if (income <= 12570) return 0;
+          if (income <= 50270) return (income - 12570) * 0.20;
+          if (income <= 125140) return (50270 - 12570) * 0.20 + (income - 50270) * 0.40;
+          return (50270 - 12570) * 0.20 + (125140 - 50270) * 0.40 + (income - 125140) * 0.45;
+        }
+        const sippAnnualTax = ukIncomeTax(sippAnnualTaxableIncome);
 
         return (
           <div className="min-h-screen p-4 md:p-6 text-sm">
@@ -1058,36 +1083,67 @@
               )}
 
               {activeTab === 'Tax' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="panel rounded-xl p-4 space-y-3">
-                    <div className="font-medium">Tax Settings</div>
-                    <label className="flex items-center justify-between">
-                      <span>NRL1i enabled (rental income tax neutral)</span>
-                      <input type="checkbox" checked={plan.tax.nrl1iEnabled} onChange={(e) => updatePlan(['tax', 'nrl1iEnabled'], e.target.checked)} />
-                    </label>
-                    <label className="flex items-center justify-between">
-                      <span>UK Self Assessment reminder</span>
-                      <input type="checkbox" checked={plan.tax.selfAssessmentReminder} onChange={(e) => updatePlan(['tax', 'selfAssessmentReminder'], e.target.checked)} />
-                    </label>
-                    <label className="flex items-center justify-between">
-                      <span>SA tax resident</span>
-                      <input type="checkbox" checked={plan.tax.saTaxResident} onChange={(e) => updatePlan(['tax', 'saTaxResident'], e.target.checked)} />
-                    </label>
-                    <label className="block">
-                      <div className="muted">UK CGT allowance (£)</div>
-                      <input className="field rounded px-2 py-1 w-full" type="number" value={plan.tax.ukCgtAllowance} onChange={(e) => updatePlan(['tax', 'ukCgtAllowance'], Number(e.target.value))} />
-                    </label>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+                    {/* Settings */}
+                    <div className="panel rounded-xl p-4 space-y-3">
+                      <div className="font-semibold">⚙️ Tax Settings</div>
+                      <label className="flex items-center justify-between gap-2">
+                        <span className="text-sm">NRL1i enabled</span>
+                        <input type="checkbox" checked={plan.tax.nrl1iEnabled} onChange={(e) => updatePlan(['tax', 'nrl1iEnabled'], e.target.checked)} />
+                      </label>
+                      <div className="text-xs muted">Rental income net of mortgage interest = £0 taxable. File before leaving UK.</div>
+                      <label className="flex items-center justify-between gap-2 mt-2">
+                        <span className="text-sm">UK Self Assessment reminder</span>
+                        <input type="checkbox" checked={plan.tax.selfAssessmentReminder} onChange={(e) => updatePlan(['tax', 'selfAssessmentReminder'], e.target.checked)} />
+                      </label>
+                      <label className="flex items-center justify-between gap-2">
+                        <span className="text-sm">SA tax resident</span>
+                        <input type="checkbox" checked={plan.tax.saTaxResident} onChange={(e) => updatePlan(['tax', 'saTaxResident'], e.target.checked)} />
+                      </label>
+                      <label className="block mt-2">
+                        <div className="muted text-xs">UK CGT annual allowance (£)</div>
+                        <input className="field rounded px-2 py-1 w-full" type="number" value={plan.tax.ukCgtAllowance} onChange={(e) => updatePlan(['tax', 'ukCgtAllowance'], Number(e.target.value))} />
+                      </label>
+                    </div>
+
+                    {/* Crypto CGT */}
+                    <div className="panel rounded-xl p-4 space-y-2">
+                      <div className="font-semibold">₿ Crypto CGT</div>
+                      <div className="text-xs muted mb-2">ISA shares are CGT-exempt. Only crypto holdings are liable.</div>
+                      <div className="flex justify-between text-sm"><span className="muted">Total crypto value</span><span>{fmtMoney(cryptoValue, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm"><span className="muted">Estimated cost basis</span><span>{fmtMoney(cryptoCostBasis, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm border-t pt-2 mt-1" style={{borderColor:'var(--line)'}}><span className="muted">Unrealised gain</span><span className="text-positive">{fmtMoney(cgtGains, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm"><span className="muted">After £{(plan.tax.ukCgtAllowance||0).toLocaleString()} allowance</span><span>{fmtMoney(cgtTaxable, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm font-semibold"><span>Est. CGT @20%</span><span className="text-negative">{fmtMoney(cgtTaxable * 0.2, 'GBP')}</span></div>
+                      <div className="text-xs muted mt-2">Update cost basis per account in Settings → Accounts.</div>
+                    </div>
+
+                    {/* SIPP Income Tax */}
+                    <div className="panel rounded-xl p-4 space-y-2">
+                      <div className="font-semibold">🏦 SIPP Drawdown Tax</div>
+                      <div className="text-xs muted mb-2">25% PCLS tax-free. Remainder taxed as income under UK law.</div>
+                      <div className="flex justify-between text-sm"><span className="muted">SIPP total value</span><span>{fmtMoney(sippValue, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm"><span className="muted">Tax-free lump sum (25%)</span><span className="text-positive">{fmtMoney(sippTaxFreeAmount, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm"><span className="muted">Taxable portion (75%)</span><span>{fmtMoney(sippTaxableAmount, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm border-t pt-2 mt-1" style={{borderColor:'var(--line)'}}><span className="muted">Spread over 20 yrs/yr</span><span>{fmtMoney(sippAnnualTaxableIncome, 'GBP')}</span></div>
+                      <div className="flex justify-between text-sm font-semibold"><span>Est. income tax/yr</span><span className="text-negative">{fmtMoney(sippAnnualTax, 'GBP')}</span></div>
+                      <div className="text-xs muted mt-1">Accessible from age 57 (~2037). State pension taxable as income above personal allowance.</div>
+                    </div>
                   </div>
-                  <div className="panel rounded-xl p-4 space-y-2">
-                    <div className="font-medium">Tax Estimates</div>
-                    <div className="muted">SA marginal estimate (simple lookup)</div>
-                    <div>Taxable income: {fmtMoney(saTaxEstimate.taxableZar, 'ZAR')}</div>
-                    <div>Estimated SA tax: {fmtMoney(saTaxEstimate.taxZar, 'ZAR')} ({fmtMoney(saTaxEstimate.taxGBP, 'GBP')})</div>
-                    <div className="muted mt-3">CGT Estimate (UK)</div>
-                    <div>Unrealised gains: {fmtMoney(cgtGains, 'GBP')}</div>
-                    <div>Taxable after allowance: {fmtMoney(cgtTaxable, 'GBP')}</div>
-                    <div>Est. CGT @20%: {fmtMoney(cgtTaxable * 0.2, 'GBP')}</div>
-                    {plan.tax.selfAssessmentReminder && <div className="text-amberish mt-2">Reminder: include UK Self Assessment in annual milestones.</div>}
+
+                  {/* SA Tax */}
+                  <div className="panel rounded-xl p-4">
+                    <div className="font-semibold mb-3">🇿🇦 South Africa Tax Estimate</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div><div className="muted text-xs">Annual taxable income</div><div>{fmtMoney(saTaxEstimate.taxableZar, 'ZAR')}</div></div>
+                      <div><div className="muted text-xs">Estimated SA tax</div><div className="text-negative">{fmtMoney(saTaxEstimate.taxZar, 'ZAR')}</div></div>
+                      <div><div className="muted text-xs">GBP equivalent</div><div className="text-negative">{fmtMoney(saTaxEstimate.taxGBP, 'GBP')}</div></div>
+                      <div><div className="muted text-xs">Effective rate</div><div>{saTaxEstimate.taxableZar > 0 ? ((saTaxEstimate.taxZar / saTaxEstimate.taxableZar) * 100).toFixed(1) : 0}%</div></div>
+                    </div>
+                    {plan.tax.nrl1iEnabled && <div className="text-xs text-positive mt-3">✓ NRL1i active — rental income not included in SA taxable income.</div>}
+                    {plan.tax.selfAssessmentReminder && <div className="text-xs text-amberish mt-1">⚡ UK Self Assessment: file annually even as non-resident landlord.</div>}
                   </div>
                 </div>
               )}
