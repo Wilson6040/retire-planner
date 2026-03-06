@@ -339,6 +339,15 @@
           { id: crypto.randomUUID(), name: 'S&P 500 ETF', startValue: 12000, cagr: 9, enabled: false },
           { id: crypto.randomUUID(), name: 'SA Property', startValue: 20000, cagr: 8, enabled: false },
         ],
+        portfolioAssets: [
+          { id: crypto.randomUUID(), name: 'ISA (HL)',       value: 120000, cagrByYear: [7,7,7,7,7,7,7,7,7,7] },
+          { id: crypto.randomUUID(), name: 'SIPP',           value: 85000,  cagrByYear: [7,7,7,7,7,7,7,7,7,7] },
+          { id: crypto.randomUUID(), name: 'AJ Bell',        value: 35000,  cagrByYear: [6,6,6,6,6,6,6,6,6,6] },
+          { id: crypto.randomUUID(), name: 'Crypto',         value: 72000,  cagrByYear: [15,15,12,12,10,10,10,8,8,8] },
+          { id: crypto.randomUUID(), name: 'GGP',            value: 18000,  cagrByYear: [20,20,20,15,15,10,10,8,8,8] },
+          { id: crypto.randomUUID(), name: 'TSLA',           value: 22000,  cagrByYear: [12,12,10,10,8,8,8,7,7,7] },
+          { id: crypto.randomUUID(), name: 'London Property',value: 0,      cagrByYear: [3,3,3,3,3,3,3,3,3,3] },
+        ],
         currency: {
           gbpZar: 23.5,
           display: CURRENCY.GBP,
@@ -1189,102 +1198,180 @@
               )}
 
               {activeTab === 'Portfolio' && (
-                <div className="space-y-4">
-                  <div className="panel rounded-xl p-4 overflow-auto">
-                    <div className="font-medium mb-3">Key Holdings + 30-year CAGR Projection</div>
-                    <table className="w-full text-xs md:text-sm">
-                      <thead>
-                        <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
-                          <th className="text-left p-2">Holding</th>
-                          <th className="text-right p-2">Qty</th>
-                          <th className="text-right p-2">Avg Buy</th>
-                          <th className="text-right p-2">Current</th>
-                          <th className="text-right p-2">Current Value</th>
-                          <th className="text-right p-2">30Y Projection</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {holdingsValue.map((h) => {
-                          const projected = h.currentValue * Math.pow(1 + Number(h.cagr || 0) / 100, 30);
-                          return (
-                            <tr key={h.id} className="border-b" style={{ borderColor: 'var(--line)' }}>
-                              <td className="p-2">{h.name}</td>
-                              <td className="p-2 text-right">{h.quantity}</td>
-                              <td className="p-2 text-right">{fmtMoney(h.avgBuy, 'GBP', 2)}</td>
-                              <td className="p-2 text-right">{fmtMoney(h.current, 'GBP', 2)}</td>
-                              <td className="p-2 text-right">{fmtMoney(h.currentValue, 'GBP')}</td>
-                              <td className="p-2 text-right">{fmtMoney(projected, 'GBP')}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                (() => {
+                  const PA_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
+                  const assets = plan.portfolioAssets || [];
+                  const totalValue = sum(assets.map(a => Number(a.value || 0)));
 
-                  <div className="panel rounded-xl p-4 space-y-3">
-                    <div className="font-medium">Hypothetical Asset Slots (10-year)</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-                      {plan.hypotheticals.map((h) => (
-                        <div key={h.id} className="border rounded p-2" style={{ borderColor: 'var(--line)' }}>
-                          <label className="flex items-center justify-between mb-2">
-                            <span className="text-xs">Include</span>
-                            <input type="checkbox" checked={h.enabled} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, enabled: e.target.checked } : x)) }))} />
-                          </label>
-                          <input className="field rounded px-2 py-1 w-full mb-1" value={h.name} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, name: e.target.value } : x)) }))} />
-                          <input className="field rounded px-2 py-1 w-full mb-1" type="number" value={h.startValue} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, startValue: Number(e.target.value) } : x)) }))} />
-                          <input className="field rounded px-2 py-1 w-full" type="number" value={h.cagr} onChange={(e) => setPlan((prev) => ({ ...prev, hypotheticals: prev.hypotheticals.map((x) => (x.id === h.id ? { ...x, cagr: Number(e.target.value) } : x)) }))} />
+                  // Per-year compound projection: value grows by cagrByYear[y] in year y
+                  function projectAsset(a, years) {
+                    const vals = [Number(a.value || 0)];
+                    for (let y = 0; y < years; y++) {
+                      const rate = (Number((a.cagrByYear || [])[y] ?? 7)) / 100;
+                      vals.push(vals[vals.length - 1] * (1 + rate));
+                    }
+                    return vals; // length = years+1, index 0 = today
+                  }
+
+                  const projections = assets.map(a => projectAsset(a, 10));
+
+                  // Chart data: year 0-10
+                  const chartData = Array.from({ length: 11 }, (_, y) => {
+                    const row = { year: y === 0 ? 'Now' : `Y${y}` };
+                    assets.forEach((a, i) => { row[a.name] = Math.round(projections[i][y]); });
+                    row['__total'] = Math.round(sum(assets.map((_, i) => projections[i][y])));
+                    return row;
+                  });
+
+                  function updateAsset(id, field, val) {
+                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.map(a => a.id === id ? { ...a, [field]: val } : a) }));
+                  }
+                  function updateCagrYear(id, yearIdx, val) {
+                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.map(a => {
+                      if (a.id !== id) return a;
+                      const c = [...(a.cagrByYear || Array(10).fill(7))];
+                      c[yearIdx] = Number(val);
+                      return { ...a, cagrByYear: c };
+                    })}));
+                  }
+                  function addAsset() {
+                    if (assets.length >= 10) return;
+                    setPlan(prev => ({ ...prev, portfolioAssets: [...prev.portfolioAssets, { id: crypto.randomUUID(), name: 'New Asset', value: 0, cagrByYear: Array(10).fill(7) }] }));
+                  }
+                  function removeAsset(id) {
+                    setPlan(prev => ({ ...prev, portfolioAssets: prev.portfolioAssets.filter(a => a.id !== id) }));
+                  }
+
+                  const [expandedAsset, setExpandedAsset] = React.useState(null);
+
+                  return (
+                    <div className="space-y-4">
+
+                      {/* Row 1: Pie + Total */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div className="panel rounded-xl p-4 lg:col-span-1">
+                          <div className="font-semibold mb-1">Portfolio Allocation</div>
+                          <div className="muted text-xs mb-3">Total: {fmtMoney(totalValue, 'GBP')}</div>
+                          <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie data={assets.map((a, i) => ({ name: a.name, value: Number(a.value || 0), fill: PA_COLORS[i % 10] }))}
+                                  cx="50%" cy="50%" outerRadius={90} innerRadius={45} dataKey="value" paddingAngle={2}
+                                  label={({ name, percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
+                                  labelLine={false}
+                                >
+                                  {assets.map((_, i) => <Cell key={i} fill={PA_COLORS[i % 10]} />)}
+                                </Pie>
+                                <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
+                                <Legend iconType="circle" iconSize={8} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="h-[22rem]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={Array.from({ length: 11 }, (_, y) => {
-                            const row = { year: y };
-                            plan.hypotheticals.forEach((h) => {
-                              row[h.name] = Number(h.startValue) * Math.pow(1 + Number(h.cagr) / 100, y);
-                            });
-                            return row;
-                          })}
-                        >
-                          <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-                          <XAxis dataKey="year" />
-                          <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                          <Tooltip formatter={(v) => fmtMoney(v, 'GBP')} />
-                          <Legend />
-                          {plan.hypotheticals.map((h, idx) => (
-                            <Line key={h.id} type="monotone" dataKey={h.name} dot={false} stroke={['#22c55e', '#14b8a6', '#f59e0b', '#3b82f6', '#ef4444'][idx % 5]} />
+                        <div className="panel rounded-xl p-4 lg:col-span-2">
+                          <div className="font-semibold mb-3">10-Year CAGR Projection</div>
+                          <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData}>
+                                <CartesianGrid stroke="#253150" strokeDasharray="3 3" />
+                                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                                <YAxis tickFormatter={v => v >= 1000000 ? `£${(v/1000000).toFixed(1)}m` : `£${Math.round(v/1000)}k`} tick={{ fontSize: 11 }} width={70} />
+                                <Tooltip formatter={(v, name) => [fmtMoney(v, 'GBP'), name]} />
+                                <Legend iconType="circle" iconSize={8} />
+                                {assets.map((a, i) => (
+                                  <Line key={a.id} type="monotone" dataKey={a.name} stroke={PA_COLORS[i % 10]} dot={false} strokeWidth={2} />
+                                ))}
+                                <Line type="monotone" dataKey="__total" name="Total" stroke="#ffffff" dot={false} strokeWidth={2} strokeDasharray="5 4" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Asset Builder */}
+                      <div className="panel rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="font-semibold">Portfolio Builder <span className="muted text-xs">({assets.length}/10 assets)</span></div>
+                          {assets.length < 10 && (
+                            <button className="btn px-3 py-1 rounded text-sm" onClick={addAsset}>+ Add Asset</button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          {assets.map((a, i) => (
+                            <div key={a.id} className="rounded-lg border" style={{ borderColor: PA_COLORS[i % 10] + '55', background: 'var(--panel-2)' }}>
+                              {/* Asset header row */}
+                              <div className="flex flex-wrap items-center gap-2 p-3">
+                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: PA_COLORS[i % 10] }}></div>
+                                <input className="field rounded px-2 py-1 text-sm font-medium flex-1 min-w-32"
+                                  value={a.name} onChange={e => updateAsset(a.id, 'name', e.target.value)} />
+                                <div className="flex items-center gap-1 text-xs muted">
+                                  <span>£</span>
+                                  <input className="field rounded px-2 py-1 text-sm w-28 text-right" type="number"
+                                    value={a.value} onChange={e => updateAsset(a.id, 'value', Number(e.target.value))} />
+                                </div>
+                                <div className="text-xs muted">{totalValue > 0 ? ((Number(a.value||0)/totalValue)*100).toFixed(1) : 0}%</div>
+                                <button className="text-xs muted hover:text-white px-2 py-1 rounded border" style={{ borderColor: 'var(--line)' }}
+                                  onClick={() => setExpandedAsset(expandedAsset === a.id ? null : a.id)}>
+                                  {expandedAsset === a.id ? '▲ CAGR/yr' : '▼ CAGR/yr'}
+                                </button>
+                                <button className="text-xs text-negative px-2 py-1 rounded hover:opacity-80" onClick={() => removeAsset(a.id)}>✕</button>
+                              </div>
+                              {/* Per-year CAGR row */}
+                              {expandedAsset === a.id && (
+                                <div className="px-3 pb-3 border-t" style={{ borderColor: 'var(--line)' }}>
+                                  <div className="text-xs muted mt-2 mb-2">CAGR % per year (Year 1–10)</div>
+                                  <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                                    {(a.cagrByYear || Array(10).fill(7)).map((rate, yi) => (
+                                      <div key={yi} className="text-center">
+                                        <div className="text-xs muted mb-1">Y{yi + 1}</div>
+                                        <input className="field rounded px-1 py-1 text-xs text-center w-full" type="number"
+                                          value={rate} onChange={e => updateCagrYear(a.id, yi, e.target.value)} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                        </div>
+                      </div>
 
-                    <div className="overflow-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
-                            <th className="p-2 text-left">Year</th>
-                            {plan.hypotheticals.map((h) => <th key={h.id} className="p-2 text-right">{h.name}</th>)}
-                            <th className="p-2 text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Array.from({ length: 11 }, (_, year) => {
-                            const vals = plan.hypotheticals.map((h) => Number(h.startValue) * Math.pow(1 + Number(h.cagr) / 100, year));
-                            return (
-                              <tr key={year} className="border-b" style={{ borderColor: 'var(--line)' }}>
-                                <td className="p-2">{year}</td>
-                                {vals.map((v, i) => <td key={i} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>)}
-                                <td className="p-2 text-right font-semibold">{fmtMoney(sum(vals), 'GBP')}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      {/* Row 3: Projection Table */}
+                      <div className="panel rounded-xl p-4 overflow-auto">
+                        <div className="font-semibold mb-3">Year-by-Year Projection Table</div>
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b" style={{ borderColor: 'var(--line)' }}>
+                              <th className="p-2 text-left">Year</th>
+                              {assets.map((a, i) => (
+                                <th key={a.id} className="p-2 text-right" style={{ color: PA_COLORS[i % 10] }}>{a.name}</th>
+                              ))}
+                              <th className="p-2 text-right text-white">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: 11 }, (_, y) => {
+                              const vals = assets.map((_, i) => projections[i][y]);
+                              const total = sum(vals);
+                              return (
+                                <tr key={y} className="border-b hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>
+                                  <td className="p-2 muted">{y === 0 ? 'Now' : `Year ${y} (${CURRENT_YEAR + y})`}</td>
+                                  {vals.map((v, i) => (
+                                    <td key={i} className="p-2 text-right">{fmtMoney(v, 'GBP')}</td>
+                                  ))}
+                                  <td className="p-2 text-right font-semibold text-positive">{fmtMoney(total, 'GBP')}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
                     </div>
-                  </div>
-                </div>
+                  );
+                })()
               )}
 
               {activeTab === 'Milestones' && (
