@@ -195,7 +195,7 @@
       (function() {
         // SHA-256 hash of the password (never store plaintext)
         // Current hash = SHA-256 of "retireplan2026"
-        var HASH = '7ce0be48e2c4671f9ff1878db27f35ee570cbc07f0cb2e28829bb1e7c24c5979';
+        var HASH = 'e8469f09623c01bde9cf7587d7ab6350a292e8a968f7d3a7c42af02e42acd60e';
         async function sha256(str) {
           const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
           return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
